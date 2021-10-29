@@ -80,7 +80,8 @@ class App:
             'gif',
             'jpg',
             'jpeg',
-            'tif']
+            'tif',
+            'png']
         
         files = [file for file in os.listdir(self.source_dir) if os.path.isfile(os.path.join(self.source_dir,file))]
         files = [file for file in files if file.split('.')[-1].lower() in img_formats]
@@ -153,13 +154,19 @@ class App:
         
         
     def undo(self,dummy=None):
+        print('items before undo:')
+        for item in self.img_list:
+            print('   {}'.format(item))
         file,dest_file,self.cur_img,self.img_list = self.move_events.pop()
         print('file:{}'.format(file))
         print('dest_file:{}'.format(dest_file))
         print('cur img: {}'.format(self.cur_img))
-        print('items: {}'.format(self.img_list))
+        print('items after undo:')
+        for item in self.img_list:
+            print('   {}'.format(item))
         move(dest_file,file)
         self.redraw_image = True
+        self.reload_img()
         
     def zoomer(self,event):
         # (x,y) = self.to_raw((event.x,event.y))
@@ -264,15 +271,30 @@ class App:
         self.image = self.canvas.create_image(int(self.canvas_width/2),int(self.canvas_height/2), image=self.sequence[0],tag='img')
         self.animate(0)
         
+    def gen_menutext(self):
         
+            menu_txt = ''
+            
+            menu_txt += 'Ctrl+Q ==> Quit\n'
+            menu_txt += 'Alt+M ==> Toggle this menu\n'
+            menu_txt += 'Ctrl+Z ==> Undo move\n'
+            menu_txt += 'L/R arrows ==> prev/next image\n'
+            menu_txt += 'U/D arrows ==> increase/decrease GIF animation speed\n'
+            menu_txt += 'ESC ==> toggle full screen\n'
+            menu_txt += 'TAB ==> toggle fit to canvas\n'
+            menu_txt += 'Ctrl+R ==> reload image\n'
+            
+            menu_txt += '\nPress key to move to subdirectory in {}\n'.format(settings.dest_root)
+            for key in settings.move_dict.keys():
+                menu_txt += '   {} ==> {}\n'.format(key,os.path.split(settings.move_dict[key])[1])
+            
+            return menu_txt
         
     def animate(self, counter):
         
         if self.show_menu:
             self.canvas.delete('all')
-            menu_txt = ''
-            for key in settings.move_dict.keys():
-                menu_txt = menu_txt+'{} ==> {}\n'.format(key,os.path.split(settings.move_dict[key])[1])
+            menu_txt = self.gen_menutext()
             text_item = self.canvas.create_text(
                 int(self.canvas_width/2),
                 int(self.canvas_height/2),
@@ -309,7 +331,7 @@ class App:
             error_text = 'No images remain in list'
             self.canvas.delete('all')
             text_item = self.canvas.create_text(int(self.canvas_width/2),int(self.canvas_height/2),fill='lightblue',font='times 10 bold',text=error_text,tag='ctr_txt')
-            self.reload_img()
+            
             
 
 root = tk.Tk()
