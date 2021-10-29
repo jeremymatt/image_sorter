@@ -41,10 +41,10 @@ class App:
         print(self.mux)
         
         
-        width = self.canvas.winfo_width()
-        height = self.canvas.winfo_height()
+        # width = self.canvas.winfo_width()
+        # height = self.canvas.winfo_height()
         
-        print('width:{}, height:{}'.format(width,height))
+        # print('width:{}, height:{}'.format(width,height))
         
         
         self.source_dir = settings.source_dir
@@ -57,7 +57,8 @@ class App:
         self.load_next = False
         self.load_prev = False
         self.redraw_image = False
-        self.fit_to_canvas = False
+        self.fit_to_canvas = True
+        self.new_image = True
         self.delay = 20
         self.default_canvas_width = 500
         self.default_canvas_height= 500
@@ -88,7 +89,29 @@ class App:
         self.img_list = [os.path.join(self.source_dir,file) for file in files]
         print('Found {} image files'.format(len(self.img_list)))
         
-    
+    def new_window(self,dummy=None):
+        window = tk.Toplevel(self.parent)
+        self.window=window
+        canvas = tk.Canvas(window,height=1000,width=1000)
+        canvas.pack()
+        menu_txt = self.gen_menutext()
+        text_item = canvas.create_text(
+            int(100),
+            int(100),
+            fill='black',
+            font='times 10 bold',
+            text=menu_txt,tag='menu_txt')
+        bbox = canvas.bbox(text_item)
+        print('bbox = {}'.format(bbox))
+        dim = (bbox[2]-bbox[0]+50,bbox[3]-bbox[1]+50)
+        window.geometry(f'{dim[0]}x{dim[1]}+100+100')
+        canvas.move(text_item,int(dim[0]/4),int(dim[1]/3))
+        canvas.update()
+        canvas.tag_raise(text_item)
+        
+        
+        
+        
     def set_keybindings(self):
         self.parent.bind('<Escape>', self.toggle_fs)
         self.parent.bind('<Right>', self.load_next_img)
@@ -114,11 +137,15 @@ class App:
         self.parent.destroy()
         
     def toggle_menu(self,dummy=None):
+        # self.new_window()
+        print('show_window = {}'.format(self.show_menu))
         if self.show_menu:
             self.show_menu = False
-            self.reload_img()
+            # self.reload_img()
+            self.window.destroy()
         else:
             self.show_menu = True
+            self.new_window()
         
     def move_file(self,dest_dir):
         if not os.path.isdir(dest_dir):
@@ -211,9 +238,11 @@ class App:
         
     def load_next_img(self,dummy=None):
         self.load_next = True
+        self.new_image = True
         
     def load_prev_img(self,dummy=None):
         self.load_prev = True
+        self.new_image = True
         
         
     def next_img(self,dummy=None):
@@ -250,20 +279,22 @@ class App:
         if self.canvas_height == 1:
             self.canvas_height = 500
             
-        num_frames = len([img for img in ImageSequence.Iterator(Image.open(img_file))])
+        print('new image: {}'.format(self.new_image))    
+        if self.new_image:
+            self.new_image = False
+            self.img_frames_raw = ImageSequence.Iterator(Image.open(img_file))
             
-        img_frames = ImageSequence.Iterator(Image.open(img_file))
-        
-        raw_frame = [img for img in img_frames][0]
-        (width, height) = raw_frame.size
-
-        img_frames = ImageSequence.Iterator(Image.open(img_file))
-        
-        if self.fit_to_canvas or (width>self.canvas_width) or (height>self.canvas_height):
-            img_frames = self.resize_img(img_frames,width,height)
+            raw_frame = [img for img in self.img_frames_raw][0]
+            (self.width, self.height) = raw_frame.size
+    
+            self.img_frames_raw = ImageSequence.Iterator(Image.open(img_file))
         
         
-        self.sequence = [ImageTk.PhotoImage(img) for img in img_frames]
+        if self.fit_to_canvas or (self.width>self.canvas_width) or (self.height>self.canvas_height):
+            self.img_frames = self.resize_img(self.img_frames_raw,self.width,self.height)
+        
+        
+        self.sequence = [ImageTk.PhotoImage(img) for img in self.img_frames]
         
         
         
@@ -292,23 +323,23 @@ class App:
         
     def animate(self, counter):
         
-        if self.show_menu:
-            self.canvas.delete('all')
-            menu_txt = self.gen_menutext()
-            text_item = self.canvas.create_text(
-                int(self.canvas_width/2),
-                int(self.canvas_height/2),
-                fill='lightblue',
-                font='times 10 bold',
-                text=menu_txt,tag='menu_txt')
-            self.canvas.tag_raise(text_item)
-            return
+        # if self.show_menu:
+        #     self.canvas.delete('all')
+        #     menu_txt = self.gen_menutext()
+        #     text_item = self.canvas.create_text(
+        #         int(self.canvas_width/2),
+        #         int(self.canvas_height/2),
+        #         fill='lightblue',
+        #         font='times 10 bold',
+        #         text=menu_txt,tag='menu_txt')
+        #     self.canvas.tag_raise(text_item)
+        #     return
              
         
         if len(self.img_list)>0:
             self.canvas.itemconfig(self.image, image=self.sequence[counter])
-            counter_text = '{}/{}'.format(self.cur_img+1,len(self.img_list))
-            text_item = self.canvas.create_text(20,15,fill='lightblue',font='times 10 bold',text=counter_text,tag='ctr_txt')
+            counter_text = '{}({}/{})'.format(os.path.split(self.img_list[self.cur_img])[1],self.cur_img+1,len(self.img_list))
+            text_item = self.canvas.create_text(5,5,fill='lightblue',anchor='w',font='times 10 bold',text=counter_text,tag='ctr_txt')
             bbox = self.canvas.bbox(text_item)
             rect_item = self.canvas.create_rectangle(bbox,fill='black',tag='ctr_txt')
             self.canvas.tag_raise(text_item,rect_item)
