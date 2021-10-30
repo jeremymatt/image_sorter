@@ -33,12 +33,12 @@ class App:
         for n in range(1,self.MAX_ZOOM+1,1):
             self.mux[n] = round(self.mux[n-1] * 1.1, 5)
             
-        print(self.mux)
+        # print(self.mux)
 
         for n in range(-1, self.MIN_ZOOM-1, -1):
             self.mux[n] = round(self.mux[n+1] * 0.9, 5)
             
-        print(self.mux)
+        # print(self.mux)
         
         
         # width = self.canvas.winfo_width()
@@ -71,6 +71,7 @@ class App:
         self.set_keybindings()
         
         
+        self.toggle_fs()
         self.toggle_fs()
         
         self.init_image(self.img_list[self.cur_img])
@@ -113,7 +114,7 @@ class App:
         
         
     def set_keybindings(self):
-        self.parent.bind('<Escape>', self.toggle_fs)
+        self.parent.bind('<F11>', self.toggle_fs)
         self.parent.bind('<Right>', self.load_next_img)
         self.parent.bind('<Left>', self.load_prev_img)
         self.parent.bind('<Down>', self.increase_delay)
@@ -123,6 +124,7 @@ class App:
         self.parent.bind("<MouseWheel>",self.zoomer)
         self.parent.bind("<Control-z>",self.undo)
         self.parent.bind("<Control-q>",self.quit_app)
+        self.parent.bind("<Escape>",self.quit_app)
         self.parent.bind("<Control-r>",self.reload_img)
         self.parent.bind('<Alt-m>',self.toggle_menu)
         self.parent.bind('<KeyRelease>',self.keyup)
@@ -138,7 +140,7 @@ class App:
         
     def toggle_menu(self,dummy=None):
         # self.new_window()
-        print('show_window = {}'.format(self.show_menu))
+        # print('show_window = {}'.format(self.show_menu))
         if self.show_menu:
             self.show_menu = False
             # self.reload_img()
@@ -182,14 +184,14 @@ class App:
         
         
     def undo(self,dummy=None):
-        print('items before undo:')
+        # print('items before undo:')
         for item in self.img_list:
             print('   {}'.format(item))
         file,dest_file,self.cur_img,self.img_list = self.move_events.pop()
-        print('file:{}'.format(file))
-        print('dest_file:{}'.format(dest_file))
-        print('cur img: {}'.format(self.cur_img))
-        print('items after undo:')
+        # print('file:{}'.format(file))
+        # print('dest_file:{}'.format(dest_file))
+        # print('cur img: {}'.format(self.cur_img))
+        # print('items after undo:')
         for item in self.img_list:
             print('   {}'.format(item))
         move(dest_file,file)
@@ -213,7 +215,7 @@ class App:
         
     def toggle_fs(self,dummy=None):
         self.redraw_image = True
-        print('toggling full screen')
+        # print('toggling full screen')
         state = False if self.parent.attributes('-fullscreen') else True
         self.parent.attributes('-fullscreen', state)
         if not state:
@@ -283,7 +285,7 @@ class App:
         if self.canvas_height == 1:
             self.canvas_height = 500
             
-        print('new image: {}'.format(self.new_image))    
+        # print('new image: {}'.format(self.new_image))    
         if self.new_image:
         # if True:
             self.new_image = False
@@ -313,12 +315,12 @@ class App:
         
             menu_txt = ''
             
-            menu_txt += 'Ctrl+Q ==> Quit\n'
+            menu_txt += 'Esc ==> Quit\n'
             menu_txt += 'Alt+M ==> Toggle this menu\n'
             menu_txt += 'Ctrl+Z ==> Undo move\n'
             menu_txt += 'L/R arrows ==> prev/next image\n'
             menu_txt += 'U/D arrows ==> increase/decrease GIF animation speed\n'
-            menu_txt += 'ESC ==> toggle full screen\n'
+            menu_txt += 'F11 ==> toggle full screen\n'
             menu_txt += 'TAB ==> toggle fit to canvas\n'
             menu_txt += 'Ctrl+R ==> reload image\n'
             
@@ -345,6 +347,10 @@ class App:
         
         if len(self.img_list)>0:
             self.canvas.itemconfig(self.image, image=self.sequence[counter])
+            try:
+                self.canvas.delete('ctr_txt')
+            except:
+                print('no text to delete')
             counter_text = '{}({}/{})'.format(os.path.split(self.img_list[self.cur_img])[1],self.cur_img+1,len(self.img_list))
             text_item = self.canvas.create_text(5,5,fill='lightblue',anchor='w',font='times 10 bold',text=counter_text,tag='ctr_txt')
             bbox = self.canvas.bbox(text_item)
