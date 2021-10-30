@@ -219,6 +219,7 @@ class App:
             
     def resize_canvas(self,event):
         self.redraw_image = True
+        self.new_image = True
         
     def toggle_fit_to_canvas(self,dummy=None):
         if self.fit_to_canvas:
@@ -226,6 +227,7 @@ class App:
         else:
             self.fit_to_canvas = True
         self.redraw_image = True
+        self.new_image = True
             
     def increase_delay(self,dummy=None):
         self.delay += 5
@@ -281,6 +283,7 @@ class App:
             
         print('new image: {}'.format(self.new_image))    
         if self.new_image:
+        # if True:
             self.new_image = False
             self.img_frames_raw = ImageSequence.Iterator(Image.open(img_file))
             
@@ -290,11 +293,13 @@ class App:
             self.img_frames_raw = ImageSequence.Iterator(Image.open(img_file))
         
         
-        if self.fit_to_canvas or (self.width>self.canvas_width) or (self.height>self.canvas_height):
-            self.img_frames = self.resize_img(self.img_frames_raw,self.width,self.height)
-        
-        
-        self.sequence = [ImageTk.PhotoImage(img) for img in self.img_frames]
+            if self.fit_to_canvas or (self.width>self.canvas_width) or (self.height>self.canvas_height):
+                self.img_frames = self.resize_img(self.img_frames_raw,self.width,self.height)
+            else:
+                self.img_frames = self.img_frames_raw
+            
+            
+            self.sequence = [ImageTk.PhotoImage(img) for img in self.img_frames]
         
         
         
