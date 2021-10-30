@@ -32,19 +32,9 @@ class App:
         self.mux = {0 : 1.0}
         for n in range(1,self.MAX_ZOOM+1,1):
             self.mux[n] = round(self.mux[n-1] * 1.1, 5)
-            
-        # print(self.mux)
 
         for n in range(-1, self.MIN_ZOOM-1, -1):
             self.mux[n] = round(self.mux[n+1] * 0.9, 5)
-            
-        # print(self.mux)
-        
-        
-        # width = self.canvas.winfo_width()
-        # height = self.canvas.winfo_height()
-        
-        # print('width:{}, height:{}'.format(width,height))
         
         
         self.source_dir = settings.source_dir
@@ -88,7 +78,6 @@ class App:
         files = [file for file in os.listdir(self.source_dir) if os.path.isfile(os.path.join(self.source_dir,file))]
         files = [file for file in files if file.split('.')[-1].lower() in img_formats]
         self.img_list = [os.path.join(self.source_dir,file) for file in files]
-        print('Found {} image files'.format(len(self.img_list)))
         
     def new_window(self,dummy=None):
         window = tk.Toplevel(self.parent)
@@ -103,7 +92,6 @@ class App:
             font='times 10 bold',
             text=menu_txt,tag='menu_txt')
         bbox = canvas.bbox(text_item)
-        print('bbox = {}'.format(bbox))
         dim = (bbox[2]-bbox[0]+50,bbox[3]-bbox[1]+50)
         window.geometry(f'{dim[0]}x{dim[1]}+100+100')
         canvas.move(text_item,int(dim[0]/4),int(dim[1]/3))
@@ -139,8 +127,6 @@ class App:
         self.parent.destroy()
         
     def toggle_menu(self,dummy=None):
-        # self.new_window()
-        # print('show_window = {}'.format(self.show_menu))
         if self.show_menu:
             self.show_menu = False
             # self.reload_img()
@@ -170,8 +156,6 @@ class App:
         
         self.move_events.append((file,dest_file,cp.deepcopy(self.cur_img),cp.deepcopy(self.img_list)))
         
-        print(file)
-        print(dest_file)
         
         move(file,dest_file)
         
@@ -184,16 +168,7 @@ class App:
         
         
     def undo(self,dummy=None):
-        # print('items before undo:')
-        for item in self.img_list:
-            print('   {}'.format(item))
         file,dest_file,self.cur_img,self.img_list = self.move_events.pop()
-        # print('file:{}'.format(file))
-        # print('dest_file:{}'.format(dest_file))
-        # print('cur img: {}'.format(self.cur_img))
-        # print('items after undo:')
-        for item in self.img_list:
-            print('   {}'.format(item))
         move(dest_file,file)
         self.redraw_image = True
         self.new_image = True
@@ -204,10 +179,10 @@ class App:
 
         if (event.delta > 0 and self.zoomcycle < self.MAX_ZOOM):
             self.zoomcycle += 1
-            print(f'zoomcycle: {self.zoomcycle}, scale: {self.mux[self.zoomcycle]}')
+            # print(f'zoomcycle: {self.zoomcycle}, scale: {self.mux[self.zoomcycle]}')
         elif (event.delta < 0 and self.zoomcycle > self.MIN_ZOOM):
             self.zoomcycle -= 1
-            print(f'zoomcycle: {self.zoomcycle}, scale: {self.mux[self.zoomcycle]}')
+            # print(f'zoomcycle: {self.zoomcycle}, scale: {self.mux[self.zoomcycle]}')
         else:
             print('Max/Min zoom reached!')
             return
@@ -215,7 +190,6 @@ class App:
         
     def toggle_fs(self,dummy=None):
         self.redraw_image = True
-        # print('toggling full screen')
         state = False if self.parent.attributes('-fullscreen') else True
         self.parent.attributes('-fullscreen', state)
         if not state:
@@ -284,8 +258,7 @@ class App:
             self.canvas_width = 500
         if self.canvas_height == 1:
             self.canvas_height = 500
-            
-        # print('new image: {}'.format(self.new_image))    
+                
         if self.new_image:
         # if True:
             self.new_image = False
