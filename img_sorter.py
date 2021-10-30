@@ -178,6 +178,7 @@ class App:
             self.cur_img = 0
         
         self.redraw_image = True
+        self.new_image = True
         
         
     def undo(self,dummy=None):
@@ -193,6 +194,7 @@ class App:
             print('   {}'.format(item))
         move(dest_file,file)
         self.redraw_image = True
+        self.new_image = True
         self.reload_img()
         
     def zoomer(self,event):
