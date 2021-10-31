@@ -9,6 +9,7 @@ import tkinter as tk
 from PIL import Image, ImageTk, ImageSequence
 import os
 import copy as cp
+import random
 
 try:
     import settings
@@ -28,7 +29,6 @@ class App:
         self.screen_width = self.parent.winfo_screenwidth()
         self.screen_height = self.parent.winfo_screenheight()
         
-        print('screen dims: {}x{}'.format(self.screen_width,self.screen_height))
         
         self.MAX_ZOOM = 10
         self.MIN_ZOOM = -10
@@ -47,10 +47,13 @@ class App:
         
         self.get_img_list()
         
+        self.previous_images = []
+        
         self.cur_img = 0
         self.loop_ctr = 0
         self.load_next = False
         self.load_prev = False
+        self.rand_order = settings.random_display_order
         self.redraw_image = False
         self.fit_to_canvas = True
         self.new_image = True
@@ -89,17 +92,21 @@ class App:
         
     def get_img_list(self):
         
-        img_formats = [
-            'gif',
-            'jpg',
-            'jpeg',
-            'tif',
-            'png']
-        
-        files = [file for file in os.listdir(self.source_dir) if os.path.isfile(os.path.join(self.source_dir,file))]
-        files = [file for file in files if file.split('.')[-1].lower() in img_formats]
-        self.img_list = [os.path.join(self.source_dir,file) for file in files]
-        
+        dirs_to_process = [self.source_dir]
+        self.img_list = []
+        while len(dirs_to_process)>0:
+            cur_dir = dirs_to_process.pop()
+            new_files = [file for file in os.listdir(cur_dir) if os.path.isfile(os.path.join(cur_dir,file))]
+            new_files = [file for file in new_files if file.split('.')[-1].lower() in settings.img_formats]
+            new_files = [os.path.join(cur_dir,file) for file in new_files]
+            self.img_list.extend(new_files)
+            
+            if settings.include_sub_dirs:
+                new_dirs = [item for item in os.listdir(cur_dir) if os.path.isdir(os.path.join(cur_dir,item))]
+                dirs_to_process.extend([os.path.join(cur_dir,item) for item in new_dirs])
+            
+            
+            
         if len(self.img_list) == 0:
             self.show_nofiles_window()
         
@@ -157,10 +164,22 @@ class App:
         window.bind("<MouseWheel>",self.zoomer)
         window.bind("<Control-z>",self.undo)
         window.bind("<Control-q>",self.quit_app)
+        window.bind("<F12>",self.toggle_rand_order)
         window.bind("<Escape>",self.quit_app)
         window.bind("<Control-r>",self.reload_img)
         window.bind('<Alt-m>',self.toggle_menu)
         window.bind('<KeyRelease>',self.keyup)
+        
+    def toggle_rand_order(self,dummy=None):
+        if self.rand_order:
+            self.rand_order = False
+            self.previous_images = []
+        else:
+            self.rand_order = True
+        # random.shuffle(self.img_list)
+        # self.cur_img = 0
+        # self.img_window.destroy()
+        # self.init_image(self.img_list[self.cur_img])
         
     
     def motion(self,event):
@@ -177,7 +196,6 @@ class App:
         
         self.bbox_dx = end_x-self.start_x
         self.bbox_dy = end_y-self.start_y
-        print('dx: {}, dy: {}'.format(self.bbox_dx, self.bbox_dy))
         self.update_bbox_pan()
         self.img_window.destroy()
         self.init_image(self.img_list[self.cur_img])
@@ -230,8 +248,8 @@ class App:
         if self.cur_img >= len(self.img_list):
             self.cur_img = 0
             
-        for img in self.img_list:
-            print(img)
+        # for img in self.img_list:
+        #     print(img)
         
         self.init_image(self.img_list[self.cur_img])
         
@@ -251,10 +269,10 @@ class App:
 
         if (event.delta > 0 and self.zoomcycle < self.MAX_ZOOM):
             self.zoomcycle += 1
-            print(f'zoomcycle: {self.zoomcycle}, scale: {self.mux[self.zoomcycle]}')
+            # print(f'zoomcycle: {self.zoomcycle}, scale: {self.mux[self.zoomcycle]}')
         elif (event.delta < 0 and self.zoomcycle > self.MIN_ZOOM):
             self.zoomcycle -= 1
-            print(f'zoomcycle: {self.zoomcycle}, scale: {self.mux[self.zoomcycle]}')
+            # print(f'zoomcycle: {self.zoomcycle}, scale: {self.mux[self.zoomcycle]}')
         else:
             print('Max/Min zoom reached!')
             return
@@ -307,15 +325,29 @@ class App:
         
     def load_next_img(self,dummy=None):
         self.reset_zoomcycle()
-        self.cur_img = (self.cur_img+1) % len(self.img_list)
+        if self.rand_order:
+            step = random.randint(0,len(self.img_list)-2)
+            self.previous_images.append(self.cur_img)
+        else:
+            step = 1
+        self.cur_img = (self.cur_img+step) % len(self.img_list)
+        # print(self.previous_images)
         self.img_window.destroy()
         self.init_image(self.img_list[self.cur_img])
         
     def load_prev_img(self,dummy=None):
         self.reset_zoomcycle()
-        self.cur_img -= 1
-        if self.cur_img < 0:
-            self.cur_img = len(self.img_list)-1
+        if len(self.previous_images)>0:
+            cur_img = self.previous_images.pop()
+            if cur_img == self.cur_img:
+                self.cur_img = self.previous_images.pop()
+            else:
+                self.cur_img = cur_img
+        else:
+            self.cur_img -= 1
+            if self.cur_img < 0:
+                self.cur_img = len(self.img_list)-1
+                
         self.img_window.destroy()
         self.init_image(self.img_list[self.cur_img])
         
@@ -574,8 +606,9 @@ class App:
             menu_txt += 'Alt+M ==> Toggle this menu\n'
             menu_txt += 'Ctrl+Z ==> Undo move\n'
             menu_txt += 'L/R arrows ==> prev/next image\n'
-            menu_txt += 'U/D arrows ==> increase/decrease GIF animation speed\n'
+            menu_txt += 'U/D arrows ==> +/- GIF animation speed\n'
             menu_txt += 'F11 ==> toggle full screen\n'
+            menu_txt += 'F12 ==> toggle random display order\n'
             menu_txt += 'TAB ==> toggle fit to canvas\n'
             menu_txt += 'Ctrl+R ==> reload image\n'
             
@@ -588,16 +621,22 @@ class App:
     def animate(self, counter,sequence):
         
         self.canvas.itemconfig(self.image, image=sequence[counter])
-        # try:
-        #     self.canvas.delete('ctr_txt')
-        # except:
-        #     print('no text to delete')
+        try:
+            self.canvas.delete('ctr_txt')
+        except:
+            print('no text to delete')
         fn = os.path.split(self.img_list[self.cur_img])[1]
         item = self.cur_img+1
         num_items = len(self.img_list)
         zoom_perc = '{}%'.format(int(self.abs_ratio*100))
-        counter_text = '{}({}/{} ({})'.format(fn,item,num_items,zoom_perc)
-        text_item = self.canvas.create_text(5,5,fill='lightblue',anchor='w',font='times 10 bold',text=counter_text,tag='ctr_txt')
+        if self.rand_order:
+            r_flag = '\nR'
+            height = 13
+        else:
+            r_flag = ''
+            height = 5
+        counter_text = '{}({}/{} ({}){}'.format(fn,item,num_items,zoom_perc,r_flag)
+        text_item = self.canvas.create_text(5,height,fill='lightblue',anchor='w',font='times 10 bold',text=counter_text,tag='ctr_txt')
         bbox = self.canvas.bbox(text_item)
         rect_item = self.canvas.create_rectangle(bbox,fill='black',tag='ctr_txt')
         self.canvas.tag_raise(text_item,rect_item)
@@ -607,6 +646,6 @@ class App:
             
 
 root = tk.Tk()
-# root.attributes('-fullscreen', True)
+root.attributes('-fullscreen', True)
 app = App(root)
 root.mainloop()
