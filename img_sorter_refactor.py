@@ -57,11 +57,12 @@ class App:
         self.delay = 20
         self.default_canvas_width = 500
         self.default_canvas_height= 500
-        self.default_window_width = 500
-        self.default_window_height= 500
+        self.default_window_width = 600
+        self.default_window_height= 300
         self.zoomcycle = 0
         self.bbox_dx = 0
         self.bbox_dy = 0
+        self.bbox_anchor = [0,0]
         self.move_events = []
         self.show_menu = False
         self.no_files = False
@@ -70,8 +71,8 @@ class App:
             self.img_window_width = self.screen_width
             self.img_window_height = self.screen_height
         else:
-            self.img_window_width = 500
-            self.img_window_height = 500
+            self.img_window_width = self.default_window_width
+            self.img_window_height = self.default_window_height
         self.img_window_wh_ratio = self.img_window_width/self.img_window_height
         
         self.reset_zoomcycle()
@@ -331,115 +332,139 @@ class App:
         self.crop_bbox = [0,0,self.img_width,self.img_height]
         self.bbox_ratio_x = self.abs_ratio
         self.bbox_ratio_y = self.abs_ratio
+        self.bbox_anchor = [0,0]
         
-        self.bbox_xdim = self.bbox[2]-self.bbox[0]
-        self.bbox_ydim = self.bbox[3]-self.bbox[1]
+        self.bbox_width = self.bbox[2]-self.bbox[0]
+        self.bbox_height = self.bbox[3]-self.bbox[1]
+        
         
         self.crop_width = self.crop_bbox[2] - self.crop_bbox[0]
         self.crop_height = self.crop_bbox[3] - self.crop_bbox[1]
         
         
     def update_bbox_pan(self):
-            
-        # print('bbox dim:{}x{}'.format(self.bbox_xdim,self.bbox_ydim))
-        # print('old bbox: {}'.format(self.bbox))
-        # print('old crop box: {}'.format(self.crop_bbox))
-        self.bbox[0] -= self.bbox_dx
-        self.bbox[2] -= self.bbox_dx
-        self.bbox[1] -= self.bbox_dy
-        self.bbox[3] -= self.bbox_dy
+        
+        
+        self.bbox_anchor[0] -= self.bbox_dx
+        self.bbox_anchor[1] -= self.bbox_dy
         self.bbox_dx = 0
         self.bbox_dy = 0
         
-        if self.bbox[0]<0:
-            # print('x<0')
-            self.bbox[0] = 0
-            self.bbox[2] = self.bbox_xdim
+        if self.bbox_anchor[0] < 0:
+            self.bbox_anchor[0] = 0
             
-        if self.bbox[1]<0:
-            # print('y<0')
-            self.bbox[1] = 0
-            self.bbox[3] = self.bbox_ydim
+        if self.bbox_anchor[1] < 0:
+            self.bbox_anchor[1] = 0
             
-        if self.bbox[2] > self.new_img_width:
-            # print('x>width')
-            self.bbox[2] = self.new_img_width
-            self.bbox[0] = self.new_img_width - self.bbox_xdim
+        if self.bbox_anchor[0] + self.bbox_width > self.new_img_width:
+            self.bbox_anchor[0] = self.new_img_width - self.bbox_width
             
-        if self.bbox[3] > self.new_img_height:
-            # print('y>height')
-            self.bbox[3] = self.new_img_height
-            self.bbox[1] = self.new_img_height - self.bbox_ydim
+        if self.bbox_anchor[1] + self.bbox_height > self.new_img_height:
+            self.bbox_anchor[1] = self.new_img_height - self.bbox_height
+            
+        vf = [
+            self.bbox_anchor[0],
+            self.bbox_anchor[1],
+            self.bbox_anchor[0]+self.bbox_width,
+            self.bbox_anchor[1]+self.bbox_height]
             
         
-        self.crop_bbox[0] = int(self.bbox[0]/self.bbox_ratio_x)
-        self.crop_bbox[1] = int(self.bbox[1]/self.bbox_ratio_y)
-        self.crop_bbox[2] = int(self.bbox[2]/self.bbox_ratio_x)
-        self.crop_bbox[3] = int(self.bbox[3]/self.bbox_ratio_y)
-        
-        self.crop_width = self.crop_bbox[2] - self.crop_bbox[0]
-        self.crop_height = self.crop_bbox[3] - self.crop_bbox[1]
+        crop_bbox_anchor = [
+            self.bbox_anchor[0]*(self.img_width/self.new_img_width),
+            self.bbox_anchor[1]*self.img_height/self.new_img_height]
         
         
-        # print('new bbox: {}'.format(self.bbox))
-        # print('new crop box: {}'.format(self.crop_bbox))
+        
+        self.crop_bbox[0:2] = crop_bbox_anchor
+        self.crop_bbox[2] = crop_bbox_anchor[0]+self.crop_width
+        self.crop_bbox[3] = crop_bbox_anchor[1]+self.crop_height
+        
+        
+        self.crop_bbox = [int(round(item)) for item in self.crop_bbox]
+        
         
         
         
     def update_bbox_zoom(self):
-        print('bbox dim:{}x{}'.format(self.bbox_xdim,self.bbox_ydim))
+        print('bbox dim:{}x{}'.format(self.bbox_width,self.bbox_height))
         print('old bbox: {}'.format(self.bbox))
         print('old crop box: {} ({}x{})'.format(self.crop_bbox,self.crop_width,self.crop_height))
         self.new_img_width = int(self.img_width*self.ratio*self.mux[self.zoomcycle])
         self.new_img_height = int(self.img_height*self.ratio*self.mux[self.zoomcycle])
         self.abs_ratio = self.ratio*self.mux[self.zoomcycle]
         
-        self.bbox_xdim = min(self.new_img_width,self.img_window_width)
-        self.bbox_ydim = min(self.new_img_height,self.img_window_height)
+        self.bbox_width = min(self.new_img_width,self.img_window_width)
+        self.bbox_height = min(self.new_img_height,self.img_window_height)
         
-        bb_wh_ratio = self.bbox_xdim/self.bbox_ydim
+        bb_wh_ratio = self.bbox_width/self.bbox_height
         
-        self.bbox_ratio_x = self.bbox_xdim/self.new_img_width
-        self.bbox_ratio_y = self.bbox_ydim/self.new_img_height
+        self.bbox_ratio_x = self.bbox_width/self.new_img_width
+        self.bbox_ratio_y = self.bbox_height/self.new_img_height
         
         
         mouse_x_fraction = self.mouse_x/self.img_window_width
         mouse_y_fraction = self.mouse_y/self.img_window_height
-        print('mouse_fraction: {}x{}'.format(mouse_x_fraction,mouse_y_fraction))
         
-        self.bbox[0] = int(self.mouse_x-self.bbox_xdim*mouse_x_fraction)
-        self.bbox[1] = int(self.mouse_y-self.bbox_ydim*mouse_y_fraction)
-        self.bbox[2] = int(self.mouse_x+self.bbox_xdim*(1-mouse_x_fraction))
-        self.bbox[3] = int(self.mouse_y+self.bbox_ydim*(1-mouse_y_fraction))
-        
-        # self.bbox[0] = 0
-        # self.bbox[1] = 0
-        # self.bbox[2] = self.bbox_xdim
-        # self.bbox[3] = self.bbox_ydim
-        
-        self.bbox_ratio_x = (self.img_window_width/self.bbox_xdim)*self.mux[self.zoomcycle]
-        self.bbox_ratio_y = (self.img_window_height/self.bbox_ydim)*self.mux[self.zoomcycle]
-        # self.bbox_ratio_x = self.abs_ratio/self.bbox_xdim
-        # self.bbox_ratio_y = self.abs_ratio/self.bbox_ydim
+        self.bbox[0] = int(self.mouse_x-self.bbox_width*mouse_x_fraction)
+        self.bbox[2] = int(self.mouse_x+self.bbox_width*(1-mouse_x_fraction))
+        self.bbox[1] = int(self.mouse_y-self.bbox_height*mouse_y_fraction)
+        self.bbox[3] = int(self.mouse_y+self.bbox_height*(1-mouse_y_fraction))
         
         
         
         
+        self.bbox_ratio_x = (self.img_window_width/self.bbox_width)*self.mux[self.zoomcycle]
+        self.bbox_ratio_y = (self.img_window_height/self.bbox_height)*self.mux[self.zoomcycle]
         
-        self.crop_bbox[0] = int(self.bbox[0]/self.bbox_ratio_x)
-        self.crop_bbox[1] = int(self.bbox[1]/self.bbox_ratio_y)
-        self.crop_bbox[2] = int(self.bbox[2]/self.bbox_ratio_x)
-        self.crop_bbox[3] = int(self.bbox[3]/self.bbox_ratio_y)
-        print('new crop box: {} ({}x{})'.format(self.crop_bbox,self.crop_width,self.crop_height))
         
-        if self.bbox_xdim == self.new_img_width:
+        if (self.bbox_width == self.new_img_width) and (self.bbox_height == self.new_img_height):
             self.crop_bbox[0] = 0
             self.crop_bbox[2] = self.img_width
             
-        if self.bbox_ydim == self.new_img_height:
             self.crop_bbox[1] = 0
             self.crop_bbox[3] = self.img_height
             
+            
+        if (self.bbox_width == self.new_img_width) and (self.bbox_height < self.new_img_height):
+            self.crop_bbox[0] = 0
+            self.crop_bbox[2] = self.img_width
+            
+            self.crop_height = self.bbox_height/self.abs_ratio
+            print('intended crop height: {}'.format(self.crop_height))
+            
+            self.crop_bbox[1] = self.bbox[1]/self.abs_ratio
+            self.crop_bbox[3] = self.bbox[3]/self.abs_ratio
+            self.crop_height = self.crop_bbox[3] - self.crop_bbox[1]
+            print('actual crop height: {}'.format(self.crop_height))
+            
+            
+        if (self.bbox_width < self.new_img_width) and (self.bbox_height == self.new_img_height):
+            self.crop_bbox[1] = 0
+            self.crop_bbox[3] = self.img_height
+            
+            self.crop_width = self.bbox_width/self.abs_ratio
+            print('intended crop width: {}'.format(self.crop_width))
+            
+            self.crop_bbox[0] = self.bbox[0]/self.abs_ratio
+            self.crop_bbox[2] = self.bbox[2]/self.abs_ratio
+            self.crop_height = self.crop_bbox[3] - self.crop_bbox[1]
+            print('actual crop width: {}'.format(self.crop_width))
+            
+        if (self.bbox_width < self.new_img_width) and (self.bbox_height < self.new_img_height):
+            self.crop_bbox[0] = self.bbox[0]/self.abs_ratio
+            self.crop_bbox[2] = self.bbox[2]/self.abs_ratio
+            
+            self.crop_height = self.bbox_height/self.abs_ratio
+            print('intended crop height: {}'.format(self.crop_height))
+            
+            self.crop_bbox[1] = self.bbox[1]/self.abs_ratio
+            self.crop_bbox[3] = self.bbox[3]/self.abs_ratio
+            self.crop_height = self.crop_bbox[3] - self.crop_bbox[1]
+            print('actual crop height: {}'.format(self.crop_height))
+            
+        self.crop_bbox = [int(round(item)) for item in self.crop_bbox]
+            
+                        
         self.crop_width = self.crop_bbox[2] - self.crop_bbox[0]
         self.crop_height = self.crop_bbox[3] - self.crop_bbox[1]
         
@@ -447,7 +472,7 @@ class App:
         
         print('img w/h ratios: \n   img: {}\n   crp: {}\n   bbx: {}\n   win: {}'.format(self.img_wh_ratio,cb_wh_ratio,bb_wh_ratio,self.img_window_wh_ratio))
         
-        print('new bbox: {} ({}x{})'.format(self.bbox,self.bbox_xdim,self.bbox_ydim))
+        print('new bbox: {} ({}x{})'.format(self.bbox,self.bbox_width,self.bbox_height))
         print('new crop box: {} ({}x{})'.format(self.crop_bbox,self.crop_width,self.crop_height))
         
         # self.img_window_wh_ratio
@@ -459,7 +484,6 @@ class App:
     def resize_img(self,frames):
         
         if self.bbox == None:
-            print('initializing bounding box')
             self.ratio = min(self.img_window_width/self.img_width,self.img_window_height/self.img_height)
             if self.ratio>2:
                 self.ratio=2 
@@ -473,8 +497,6 @@ class App:
                 self.ratio = 1
             self.abs_ratio = self.ratio*self.mux[self.zoomcycle]
             self.init_bbox()
-        else:
-            print('not initializing bounding box')
         
         
             
@@ -484,7 +506,7 @@ class App:
             #     thumbnail = thumbnail.crop(self.crop_bbox)
             
             thumbnail = thumbnail.crop(self.crop_bbox)
-            thumbnail = thumbnail.resize((self.new_img_width,self.new_img_height),Image.LANCZOS)
+            thumbnail = thumbnail.resize((self.bbox_width,self.bbox_height),Image.LANCZOS)
             yield thumbnail
             
             
@@ -492,7 +514,7 @@ class App:
         
         (self.img_width, self.img_height) = Image.open(img_file).size
         self.img_wh_ratio = self.img_width/self.img_height
-        print('\nIMAGE SIZE: {}x{}'.format(self.img_width, self.img_height))
+        # print('\nIMAGE SIZE: {}x{}'.format(self.img_width, self.img_height))
         
         img_frames_raw = ImageSequence.Iterator(Image.open(img_file))
         
