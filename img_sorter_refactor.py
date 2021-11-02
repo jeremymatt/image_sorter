@@ -32,8 +32,8 @@ class App:
         self.screen_height = self.parent.winfo_screenheight()
         
         
-        self.MAX_ZOOM = 10
-        self.MIN_ZOOM = -10
+        self.MAX_ZOOM = 15
+        self.MIN_ZOOM = -15
         
         # Initialize the scaling/zoom table
         self.mux = {0 : 1.0}
@@ -579,17 +579,14 @@ class App:
             
         for frame in frames:
             thumbnail = frame.copy()
-            # if (self.crop_width<self.img_width) or (self.crop_height<self.img_height):
-            #     thumbnail = thumbnail.crop(self.crop_bbox)
             
-            # print('rotation: {}'.format(self.rotation))
-            # if self.rotation != 0:
-            print('before rotate size: {}'.format(thumbnail.size))
-            print('img w/h: {}x{}'.format(self.img_width,self.img_height))
-            thumbnail = thumbnail.rotate(self.rotation, expand=1, center=None, translate=None)
-            thumbnail.save('rotate_{}.jpg'.format(self.rotation))
+            if self.rotation != 0:
+                thumbnail = thumbnail.rotate(self.rotation, expand=1, center=None, translate=None)
+                # thumbnail.save('rotate_{}.jpg'.format(self.rotation))
             
-            thumbnail = thumbnail.crop(self.crop_bbox)
+            if (self.crop_width<self.img_width) or (self.crop_height<self.img_height):
+                thumbnail = thumbnail.crop(self.crop_bbox)
+                
             thumbnail = thumbnail.resize((self.bbox_width,self.bbox_height),Image.LANCZOS)
             # thumbnail.save('thumbnail.jpg')
             yield thumbnail

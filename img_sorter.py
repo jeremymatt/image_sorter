@@ -6,7 +6,7 @@ Created on Wed Oct 27 20:09:45 2021
 """
 
 import tkinter as tk
-from PIL import Image, ImageTk, ImageSequence
+from PIL import Image, ImageTk, ImageSequence, ImageOps
 import os
 import copy as cp
 import random
@@ -32,8 +32,8 @@ class App:
         self.screen_height = self.parent.winfo_screenheight()
         
         
-        self.MAX_ZOOM = 10
-        self.MIN_ZOOM = -10
+        self.MAX_ZOOM = 15
+        self.MIN_ZOOM = -15
         
         # Initialize the scaling/zoom table
         self.mux = {0 : 1.0}
@@ -175,8 +175,10 @@ class App:
         window.bind('<F11>', self.toggle_fs)
         window.bind('<Right>', self.load_next_img)
         window.bind('<Left>', self.load_prev_img)
-        window.bind('<Down>', self.increase_delay)
-        window.bind('<Up>', self.decrease_delay)
+        window.bind('-', self.increase_delay)
+        window.bind('=', self.decrease_delay)
+        window.bind('<Down>', self.rotate_cw)
+        window.bind('<Up>', self.rotate_ccw)
         window.bind('<Tab>', self.toggle_fit_to_canvas)
         window.bind('<Configure>', self.resize_canvas)
         window.bind("<MouseWheel>",self.zoomer)
@@ -187,6 +189,49 @@ class App:
         window.bind("<Control-r>",self.reload_img)
         window.bind('<Alt-m>',self.toggle_menu)
         window.bind('<KeyRelease>',self.keyup)
+        
+        
+    # def tr(rotation):
+        
+    #     sign = rotation/abs(rotation)
+    #     rotation %= 360
+    #     rotation *= sign
+    #     rotation  = int(rotation)
+    #     print(rotation)
+        
+    def rotate_cw(self,dummy=None):
+        self.rotation += 90
+        if self.rotation == 0:
+            sign = 1
+        else:
+            sign = self.rotation/abs(self.rotation)
+        self.rotation %= sign*360
+        self.rotation = int(self.rotation)
+        
+        temp = cp.deepcopy(self.img_height)
+        self.img_height = cp.deepcopy(self.img_width)
+        self.img_width = temp
+        self.bbox = None
+        self.zoomcycle = 0
+        self.init_image()
+        
+    def rotate_ccw(self,dummy=None):
+        self.rotation -= 90
+        if self.rotation == 0:
+            sign = 1
+        else:
+            sign = self.rotation/abs(self.rotation)
+        self.rotation %= sign*360
+        self.rotation = int(self.rotation)
+        
+        temp = cp.deepcopy(self.img_height)
+        self.img_height = cp.deepcopy(self.img_width)
+        self.img_width = temp
+        self.bbox = None
+        self.zoomcycle = 0
+        self.init_image()
+        
+        
         
     def toggle_rand_order(self,dummy=None):
         if self.rand_order:
@@ -534,17 +579,23 @@ class App:
             
         for frame in frames:
             thumbnail = frame.copy()
-            # if (self.crop_width<self.img_width) or (self.crop_height<self.img_height):
-            #     thumbnail = thumbnail.crop(self.crop_bbox)
             
-            thumbnail = thumbnail.crop(self.crop_bbox)
+            if self.rotation != 0:
+                thumbnail = thumbnail.rotate(self.rotation, expand=1, center=None, translate=None)
+                # thumbnail.save('rotate_{}.jpg'.format(self.rotation))
+            
+            if (self.crop_width<self.img_width) or (self.crop_height<self.img_height):
+                thumbnail = thumbnail.crop(self.crop_bbox)
+                
             thumbnail = thumbnail.resize((self.bbox_width,self.bbox_height),Image.LANCZOS)
+            # thumbnail.save('thumbnail.jpg')
             yield thumbnail
             
             
     def gen_sequence(self,img_file):
         
         if self.new_image:
+            self.rotation = 0
             (self.img_width, self.img_height) = Image.open(img_file).size
             self.img_wh_ratio = self.img_width/self.img_height
             self.open_image = Image.open(img_file)
@@ -571,6 +622,7 @@ class App:
         
     def init_image(self):
         img_file = self.get_img_path()
+        
         
         if img_file == None: 
             sequence = None   
@@ -667,6 +719,6 @@ class App:
             
 
 root = tk.Tk()
-root.attributes('-fullscreen', True)
+# root.attributes('-fullscreen', True)
 app = App(root)
 root.mainloop()
