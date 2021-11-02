@@ -11,6 +11,8 @@ import os
 import copy as cp
 import random
 
+import time
+
 try:
     import settings
 except:
@@ -49,6 +51,7 @@ class App:
         
         self.previous_images = []
         
+        self.img_window_list = []
         self.cur_img = 0
         self.loop_ctr = 0
         self.load_next = False
@@ -62,6 +65,7 @@ class App:
         self.default_canvas_height= 500
         self.default_window_width = 500
         self.default_window_height= 500
+        self.img_window = None
         self.zoomcycle = 0
         self.bbox_dx = 0
         self.bbox_dy = 0
@@ -82,7 +86,8 @@ class App:
         self.img_window = self.parent
         self.set_keybindings(self.parent)
         
-        self.init_image(self.img_list[self.cur_img])
+        self.init_first_image()
+        # self.show_nofiles_window()
         
     def reset_zoomcycle(self):
         self.zoomcycle = 0
@@ -107,14 +112,14 @@ class App:
             
             
             
-        if len(self.img_list) == 0:
-            self.show_nofiles_window()
+        # if len(self.img_list) == 0:
+        #     self.show_nofiles_window()
         
     def show_menu_window(self,dummy=None):
         self.menu_window = tk.Toplevel(self.parent)
         # self.menu_window.attributes('-fullscreen', True)
         # self.menu_window.configure(background='black')
-        canvas = tk.Canvas(self.menu_window,height=1000,width=1000)
+        canvas = tk.Canvas(self.menu_window,height=500,width=500)
         canvas.pack()
         menu_txt = self.gen_menutext()
         text_item = canvas.create_text(
@@ -132,9 +137,16 @@ class App:
         
     def show_nofiles_window(self,dummy=None):
         self.nofiles_window = tk.Toplevel(self.parent)
+        self.nofiles_window.focus_force()
+        
+        
+        self.nofiles_window.bind("<Control-q>",self.quit_app)
+        self.nofiles_window.bind("<Escape>",self.quit_app)
+        self.nofiles_window.bind("<Control-z>",self.undo)
+        
         # self.window.attributes('-fullscreen', True)
         # self.window.configure(background='black')
-        canvas = tk.Canvas(self.menu_window,height=50,width=100)
+        canvas = tk.Canvas(self.nofiles_window,height=50,width=100)
         canvas.pack()
         error_text = 'No images remain in list'
         text_item = canvas.create_text(
@@ -182,10 +194,6 @@ class App:
             self.previous_images = []
         else:
             self.rand_order = True
-        # random.shuffle(self.img_list)
-        # self.cur_img = 0
-        # self.img_window.destroy()
-        # self.init_image(self.img_list[self.cur_img])
         
     
     def motion(self,event):
@@ -203,10 +211,13 @@ class App:
         self.bbox_dx = end_x-self.start_x
         self.bbox_dy = end_y-self.start_y
         self.update_bbox_pan()
-        self.img_window.destroy()
-        self.init_image(self.img_list[self.cur_img])
+        self.init_image()
         
-        
+    def get_img_path(self):
+        if len(self.img_list) == 0:
+            return None
+        else:
+            return self.img_list[self.cur_img]
         
     def keyup(self,event):
         key = event.char
@@ -225,7 +236,6 @@ class App:
             self.show_menu_window()
         
     def move_file(self,dest_dir):
-        self.img_window.destroy()
         self.reset_zoomcycle()
         if not os.path.isdir(dest_dir):
             os.makedirs(dest_dir)
@@ -257,18 +267,17 @@ class App:
         # for img in self.img_list:
         #     print(img)
         
-        self.init_image(self.img_list[self.cur_img])
+        self.init_image()
         
         
     def undo(self,dummy=None):
         file,dest_file,self.cur_img,self.img_list = self.move_events.pop()
         move(dest_file,file)
         self.reset_zoomcycle()
-        self.img_window.destroy()
         if self.no_files:
             self.no_files = False
             self.nofiles_window.destroy()
-        self.init_image(self.img_list[self.cur_img])
+        self.init_image()
         
     def zoomer(self,event):
         # (x,y) = self.to_raw((event.x,event.y))
@@ -284,8 +293,7 @@ class App:
             return
         
         self.update_bbox_zoom()
-        self.img_window.destroy()
-        self.init_image(self.img_list[self.cur_img])
+        self.init_image()
 
         
     def toggle_fs(self,dummy=None):
@@ -300,16 +308,13 @@ class App:
         self.img_window_wh_ratio = self.img_window_width/self.img_window_height
         self.reset_zoomcycle()
         
-        
-        self.img_window.destroy()
-        self.init_image(self.img_list[self.cur_img])
+        self.init_image()
         
             
     def resize_canvas(self,event):
         self.default_canvas_height = 500
         self.default_canvas_width = 500
-        self.img_window.destroy()
-        self.init_image(self.img_list[self.cur_img])
+        self.init_image()
         
     def toggle_fit_to_canvas(self,dummy=None):
         if self.fit_to_canvas:
@@ -317,8 +322,7 @@ class App:
         else:
             self.fit_to_canvas = True
         self.reset_zoomcycle()
-        self.img_window.destroy()
-        self.init_image(self.img_list[self.cur_img])
+        self.init_image()
             
     def increase_delay(self,dummy=None):
         self.delay += 5
@@ -338,8 +342,7 @@ class App:
             step = 1
         self.cur_img = (self.cur_img+step) % len(self.img_list)
         # print(self.previous_images)
-        self.img_window.destroy()
-        self.init_image(self.img_list[self.cur_img])
+        self.init_image()
         
     def load_prev_img(self,dummy=None):
         self.reset_zoomcycle()
@@ -354,16 +357,11 @@ class App:
             if self.cur_img < 0:
                 self.cur_img = len(self.img_list)-1
                 
-        self.img_window.destroy()
-        self.init_image(self.img_list[self.cur_img])
+        self.init_image()
         
     def reload_img(self,dummy=None):
         self.reset_zoomcycle()
-        try:
-            self.img_window.destroy()
-        except:
-            donothing=True
-        self.init_image(self.img_list[self.cur_img])
+        self.init_image()
         
     def init_bbox(self):
         self.bbox = [0,0,self.new_img_width,self.new_img_height]
@@ -569,9 +567,28 @@ class App:
         return sequence
         
     
-    def init_image(self,img_file):
+    def init_first_image(self):
+        img_file = self.get_img_path()
         
+        if img_file == None: 
+            sequence = None   
+        else:
+            sequence = self.gen_sequence(img_file)
         
+        self.open_img_window(sequence)
+        
+    def init_image(self):
+        img_file = self.get_img_path()
+        
+        if img_file == None: 
+            sequence = None   
+        else:
+            sequence = self.gen_sequence(img_file)
+        
+        self.img_window.destroy()
+        self.open_img_window(sequence)
+            
+    def open_img_window(self,sequence):
         self.img_window = tk.Toplevel(self.parent)
         
         # self.set_keybindings(self.img_window)
@@ -592,17 +609,24 @@ class App:
         self.canvas = tk.Canvas(self.img_window,height=self.img_window_height,width=self.img_window_width, bg='black', highlightthickness=0)
         self.canvas.pack()
         
-        if len(self.img_list)>0:
-                
-            
-            sequence = self.gen_sequence(img_file)
-            
+        
+        if sequence == None:
+            print('showing error message')
+            error_text = 'No images remain in list'
+            text_item = self.canvas.create_text(
+                int(self.img_window_width/2),
+                int(self.img_window_height/2),
+                fill='lightblue',
+                font='times 20 bold',
+                text=error_text,
+                tag='error_txt')
+            self.canvas.tag_raise(text_item)
+            self.canvas.update()
+            self.canvas.tag_raise(text_item)
+        else:
             self.image = self.canvas.create_image(int(self.img_window_width/2),int(self.img_window_height/2), image=sequence[0],tag='img')
             self.animate(0,sequence)
-            
-        else:
-            self.no_files = True
-            self.show_nofiles_window()
+        
         
     def gen_menutext(self):
         
