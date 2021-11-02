@@ -582,13 +582,12 @@ class App:
             # if (self.crop_width<self.img_width) or (self.crop_height<self.img_height):
             #     thumbnail = thumbnail.crop(self.crop_bbox)
             
-            print('rotation: {}'.format(self.rotation))
+            # print('rotation: {}'.format(self.rotation))
             # if self.rotation != 0:
             print('before rotate size: {}'.format(thumbnail.size))
-            thumbnail = thumbnail.rotate(self.rotation)
-            thumbnail = ImageOps.exif_transpose(thumbnail)
-            print('after rotate size: {}'.format(thumbnail.size))
-            # thumbnail.save('rotate_{}.jpg'.format(self.rotation))
+            print('img w/h: {}x{}'.format(self.img_width,self.img_height))
+            thumbnail = thumbnail.rotate(self.rotation, expand=1, center=None, translate=None)
+            thumbnail.save('rotate_{}.jpg'.format(self.rotation))
             
             thumbnail = thumbnail.crop(self.crop_bbox)
             thumbnail = thumbnail.resize((self.bbox_width,self.bbox_height),Image.LANCZOS)
