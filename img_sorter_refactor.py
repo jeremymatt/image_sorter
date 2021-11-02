@@ -236,6 +236,8 @@ class App:
             self.show_menu_window()
         
     def move_file(self,dest_dir):
+        self.new_image = True
+        self.open_image.close()
         self.reset_zoomcycle()
         if not os.path.isdir(dest_dir):
             os.makedirs(dest_dir)
@@ -264,8 +266,6 @@ class App:
         if self.cur_img >= len(self.img_list):
             self.cur_img = 0
             
-        # for img in self.img_list:
-        #     print(img)
         
         self.init_image()
         
@@ -274,9 +274,8 @@ class App:
         file,dest_file,self.cur_img,self.img_list = self.move_events.pop()
         move(dest_file,file)
         self.reset_zoomcycle()
-        if self.no_files:
-            self.no_files = False
-            self.nofiles_window.destroy()
+        self.new_image = True
+        self.open_image.close()
         self.init_image()
         
     def zoomer(self,event):
@@ -342,6 +341,8 @@ class App:
             step = 1
         self.cur_img = (self.cur_img+step) % len(self.img_list)
         # print(self.previous_images)
+        self.new_image = True
+        self.open_image.close()
         self.init_image()
         
     def load_prev_img(self,dummy=None):
@@ -356,7 +357,8 @@ class App:
             self.cur_img -= 1
             if self.cur_img < 0:
                 self.cur_img = len(self.img_list)-1
-                
+        self.new_image = True
+        self.open_image.close()
         self.init_image()
         
     def reload_img(self,dummy=None):
@@ -397,12 +399,6 @@ class App:
             
         if self.bbox_anchor[1] + self.bbox_height > self.new_img_height:
             self.bbox_anchor[1] = self.new_img_height - self.bbox_height
-            
-        vf = [
-            self.bbox_anchor[0],
-            self.bbox_anchor[1],
-            self.bbox_anchor[0]+self.bbox_width,
-            self.bbox_anchor[1]+self.bbox_height]
             
         
         crop_bbox_anchor = [
@@ -548,18 +544,14 @@ class App:
             
     def gen_sequence(self,img_file):
         
-        (self.img_width, self.img_height) = Image.open(img_file).size
-        self.img_wh_ratio = self.img_width/self.img_height
-        # print('\nIMAGE SIZE: {}x{}'.format(self.img_width, self.img_height))
-        
-        img_frames_raw = ImageSequence.Iterator(Image.open(img_file))
+        if self.new_image:
+            (self.img_width, self.img_height) = Image.open(img_file).size
+            self.img_wh_ratio = self.img_width/self.img_height
+            self.open_image = Image.open(img_file)
+            self.new_image = False
+        img_frames_raw = ImageSequence.Iterator(self.open_image)
         
         img_frames = self.resize_img(img_frames_raw)
-        # if self.fit_to_canvas or (self.bbox != None) or (self.img_width>self.img_window_width) or (self.img_height>self.img_window_height):
-        #     img_frames = self.resize_img(img_frames_raw)
-        # else:
-        #     self.abs_ratio = 1
-        #     img_frames = img_frames_raw
         
         
         sequence = [ImageTk.PhotoImage(img) for img in img_frames]
@@ -611,7 +603,6 @@ class App:
         
         
         if sequence == None:
-            print('showing error message')
             error_text = 'No images remain in list'
             text_item = self.canvas.create_text(
                 int(self.img_window_width/2),
