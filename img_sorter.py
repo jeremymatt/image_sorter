@@ -60,8 +60,8 @@ class App:
         self.delay = 20
         self.default_canvas_width = 500
         self.default_canvas_height= 500
-        self.default_window_width = 600
-        self.default_window_height= 300
+        self.default_window_width = 500
+        self.default_window_height= 500
         self.zoomcycle = 0
         self.bbox_dx = 0
         self.bbox_dy = 0
@@ -137,7 +137,13 @@ class App:
         canvas = tk.Canvas(self.menu_window,height=50,width=100)
         canvas.pack()
         error_text = 'No images remain in list'
-        text_item = canvas.create_text(int(self.img_window_width/2),int(self.img_window_height/2),fill='lightblue',font='times 10 bold',text=error_text,tag='ctr_txt')
+        text_item = canvas.create_text(
+            int(self.img_window_width/2),
+            int(self.img_window_height/2),
+            fill='lightblue',
+            font='times 10 bold',
+            text=error_text,
+            tag='error_txt')
         canvas.tag_raise(text_item)
         # text_item = canvas.create_text(
         #     int(100),
