@@ -65,6 +65,7 @@ class App:
         self.default_window_width = 500
         self.default_window_height= 500
         self.img_window = None
+        self.has_compare_window = False
         self.zoomcycle = 0
         self.bbox_dx = 0
         self.bbox_dy = 0
@@ -146,6 +147,8 @@ class App:
         window.bind("<Control-r>",self.reload_img)
         window.bind('<Alt-m>',self.toggle_menu)
         window.bind('<KeyRelease>',self.keyup)
+        window.bind('1',self.show_img_compare_window)
+        window.bind('2',self.close_img_compare_window)
         
         
     def rotate_cw(self,dummy=None):
@@ -226,6 +229,39 @@ class App:
         else:
             self.show_menu = True
             self.show_menu_window()
+            
+            
+    def gen_menutext(self):
+        
+            menu_txt = ''
+            
+            menu_txt += 'Esc ==> Quit\n'
+            menu_txt += 'Alt+M ==> Toggle this menu\n'
+            menu_txt += 'Ctrl+Z ==> Undo move\n'
+            menu_txt += 'L/R arrows ==> prev/next image\n'
+            menu_txt += 'U/D arrows ==> +/- GIF animation speed\n'
+            menu_txt += 'F11 ==> toggle full screen\n'
+            menu_txt += 'F12 ==> toggle random display order\n'
+            menu_txt += 'TAB ==> toggle fit to canvas\n'
+            menu_txt += 'Ctrl+R ==> reload image\n'
+            
+            menu_txt += '\nPress key to move to subdirectory in {}\n'.format(settings.dest_root)
+            for key in settings.move_dict.keys():
+                menu_txt += '   {} ==> {}\n'.format(key,os.path.split(settings.move_dict[key])[1])
+            
+            return menu_txt
+            
+    def show_img_compare_window(self,dummy=None):
+        if self.has_compare_window:
+            self.img_compare_window.destroy()
+        self.has_compare_window = True
+        new_file = self.img_list[3]
+        existing_file = self.img_list[4]
+        self.open_compare_window(new_file,existing_file)
+        
+    def close_img_compare_window(self,dummy=None):
+        self.img_compare_window.destroy()
+        self.has_compare_window = False
         
     def move_file(self,dest_dir):
         self.new_image = True
@@ -489,6 +525,7 @@ class App:
             self.img_wh_ratio = self.img_width/self.img_height
             self.open_image = Image.open(img_file)
             self.new_image = False
+            self.bbox = None
         img_frames_raw = ImageSequence.Iterator(self.open_image)
         
         img_frames = self.resize_img(img_frames_raw)
@@ -497,48 +534,169 @@ class App:
         sequence = [ImageTk.PhotoImage(img) for img in img_frames]
         
         return sequence
-        
     
-    def init_first_image(self):
-        img_file = self.get_img_path()
-        
-        if img_file == None: 
-            sequence = None   
-        else:
-            sequence = self.gen_sequence(img_file)
-        
-        self.open_img_window(sequence)
-        
-    def init_image(self):
-        img_file = self.get_img_path()
+    def gen_compare_sequence(self,frames,w,h):
         
         
-        if img_file == None: 
-            sequence = None   
-        else:
-            sequence = self.gen_sequence(img_file)
+        # frames = ImageSequence.Iterator(open_file)
         
-        self.img_window.destroy()
-        self.open_img_window(sequence)
+        
+        ratio = min(self.default_window_width/w,self.default_window_height/h)
+        if ratio>2:
+            ratio=2 
+                
+        new_w = int(w*ratio)
+        new_h = int(h*ratio)
+        
+        for frame in frames:
+            thumbnail = frame.copy()
+                
+            thumbnail = thumbnail.resize((new_w,new_h),Image.LANCZOS)
+            # thumbnail.save('thumbnail.jpg')
+            yield thumbnail
+        
+    def open_compare_window(self,new_file,existing_file):
+        
+        
+        self.new_file = Image.open(new_file)
+        self.existing_file = Image.open(existing_file)
+        self.open_compare_images = {}
+        self.open_compare_images['new'] = ImageSequence.Iterator(self.new_file)
+        self.open_compare_images['existing'] = ImageSequence.Iterator(self.existing_file )
+        
+        new_width,new_height = Image.open(new_file).size
+        existing_width,existing_height = Image.open(existing_file).size
+        
+        print('new w/h: {}x{}'.format(new_width,new_height))
+        print('existing w/h: {}x{}'.format(existing_width,existing_height))
+        
+        # new_width,new_height = Image.open(new_file).size
+        # existing_width,existing_height = Image.open(existing_file).size
+        
+        
+        self.new_sequence = self.gen_compare_sequence(self.open_compare_images['new'],new_width,new_height)
+        self.existing_sequence = self.gen_compare_sequence(self.open_compare_images['existing'],existing_width,existing_height)
             
-    def open_img_window(self,sequence):
-        self.img_window = tk.Toplevel(self.parent)
-        
-        self.img_window.bind("<MouseWheel>",self.zoomer)
-        self.img_window.bind('<Motion>',self.motion)
-        self.img_window.bind("<Control-q>",self.quit_app)
-        self.img_window.bind("<Escape>",self.quit_app)
-        
-        self.img_window.bind('<ButtonPress-1>', self.move_from)
-        self.img_window.bind('<ButtonRelease-1>',     self.move_to)
-        
-        if self.full_screen:
-            self.img_window.attributes('-fullscreen', True)
-        else:
-            self.img_window.geometry(f'{self.img_window_width}x{self.img_window_height}+100+100')
+        # print('open compare images: {}'.format(self.open_compare_images))
+        # print(self.compare_sequence_dict)
             
-        self.img_window.configure(background='black')
-        self.canvas = tk.Canvas(self.img_window,height=self.img_window_height,width=self.img_window_width, bg='black', highlightthickness=0)
+        self.new_sequence = [ImageTk.PhotoImage(img) for img in self.new_sequence]
+        
+        self.existing_sequence = [ImageTk.PhotoImage(img) for img in self.existing_sequence]
+        
+        print('in open compare')
+        self.img_compare_window = tk.Toplevel(self.parent)
+        
+        self.img_compare_window.bind("<MouseWheel>",self.zoomer)
+        self.img_compare_window.bind('<Motion>',self.motion)
+        self.img_compare_window.bind("<Control-q>",self.quit_app)
+        self.img_compare_window.bind("<Escape>",self.quit_app)
+        
+        self.img_compare_window.bind('<ButtonPress-1>', self.move_from)
+        self.img_compare_window.bind('<ButtonRelease-1>',     self.move_to)
+        
+        compare_width = 2*self.default_window_width+5
+        self.img_compare_window.geometry(f'{compare_width}x{self.default_window_height}+100+100')
+            
+        self.img_compare_window.configure(background='white')
+        
+        new_canvas = tk.Canvas(
+            self.img_compare_window,
+            height=self.default_window_height,
+            width=self.default_window_width,
+            bg='black',
+            highlightthickness=0)
+        new_canvas.place(x=0, y=0,anchor=tk.NW)
+        
+        
+        
+        existing_canvas = tk.Canvas(
+            self.img_compare_window,
+            height=self.default_window_height,
+            width=self.default_window_width,
+            bg='black',
+            highlightthickness=0)
+        existing_canvas.place(x=self.default_window_width+5, y=0,anchor=tk.NW)
+        
+        main_window = False
+        new_image = new_canvas.create_image(
+            int(self.default_window_width/2),
+            int(self.default_window_height/2), 
+            image=self.new_sequence[0],
+            tag='new_img')
+        
+        txt = '{}({}x{}'.format(new_file,new_width,new_height)
+        text_item = new_canvas.create_text(5,5,fill='lightblue',anchor='w',font='times 10 bold',text=txt,tag='new_txt')
+        bbox = new_canvas.bbox(text_item)
+        rect_item = new_canvas.create_rectangle(bbox,fill='black',tag='new_txt')
+        new_canvas.tag_raise(text_item,rect_item)
+        
+        text_item = new_canvas.create_text(int(self.default_window_width/2),self.default_window_height-25,fill='lightblue',anchor=tk.S,font='times 20 bold',text='1',tag='new_txt')
+        bbox = new_canvas.bbox(text_item)
+        rect_item = new_canvas.create_rectangle(bbox,fill='blue',tag='new_txt')
+        new_canvas.tag_raise(text_item,rect_item)
+        
+        existing_image = existing_canvas.create_image(
+            int(self.default_window_width/2),
+            int(self.default_window_height/2), 
+            image=self.existing_sequence[0],
+            tag='new_img')
+        
+        txt = '{}({}x{}'.format(existing_file,existing_width,existing_height)
+        text_item = existing_canvas.create_text(5,5,fill='lightblue',anchor='w',font='times 10 bold',text=txt,tag='ex_txt')
+        bbox = existing_canvas.bbox(text_item)
+        rect_item = existing_canvas.create_rectangle(bbox,fill='black',tag='ex_txt')
+        existing_canvas.tag_raise(text_item,rect_item)
+        
+        text_item = existing_canvas.create_text(int(self.default_window_width/2),self.default_window_height-25,fill='lightblue',anchor=tk.S,font='times 20 bold',text='2',tag='ex_txt')
+        bbox = existing_canvas.bbox(text_item)
+        rect_item = existing_canvas.create_rectangle(bbox,fill='blue',tag='ex_txt')
+        existing_canvas.tag_raise(text_item,rect_item)
+        
+        
+        height = 30
+        width=150
+        both_canvas = tk.Canvas(
+            self.img_compare_window,
+            height=height,
+            width=width,
+            bg='blue',
+            highlightthickness=0)
+        both_canvas.pack(side=tk.BOTTOM)
+        text_item = both_canvas.create_text(int(width/2),0,fill='lightblue',anchor=tk.N,font='times 20 bold',text='keep both: 3',tag='ex_txt')
+        # bbox = existing_canvas.bbox(text_item)
+        # rect_item = existing_canvas.create_rectangle(bbox,fill='black',tag='ex_txt')
+        # existing_canvas.tag_raise(text_item,rect_item)
+        both_canvas.place(x=self.default_window_width+2, y=self.default_window_height-5,anchor=tk.S)
+        
+        inputs = new_canvas,existing_canvas,both_canvas,new_image,existing_image
+        self.animate_compare(0,0,inputs)
+        
+        
+        
+        
+        
+    '''
+    def open_compare_window_bkup(self,new_file,existing_file):
+        new_sequence,new_width,new_height = self.gen_compare_sequence(new_file)
+        existing_sequence,existing_width,existing_height = self.gen_compare_sequence(existing_file)
+        
+        
+        self.img_compare_window = tk.Toplevel(self.parent)
+        
+        self.img_compare_window.bind("<MouseWheel>",self.zoomer)
+        self.img_compare_window.bind('<Motion>',self.motion)
+        self.img_compare_window.bind("<Control-q>",self.quit_app)
+        self.img_compare_window.bind("<Escape>",self.quit_app)
+        
+        self.img_compare_window.bind('<ButtonPress-1>', self.move_from)
+        self.img_compare_window.bind('<ButtonRelease-1>',     self.move_to)
+        
+        compare_width = 2*self.default_window_width
+        self.img_compare_window.geometry(f'{compare_width}x{self.default_window_height}+100+100')
+            
+        self.img_compare_window.configure(background='white')
+        self.canvas = tk.Canvas(self.img_compare_window,height=self.img_window_height,width=self.img_window_width, bg='black', highlightthickness=0)
         self.canvas.pack()
         
         
@@ -557,52 +715,147 @@ class App:
         else:
             self.image = self.canvas.create_image(int(self.img_window_width/2),int(self.img_window_height/2), image=sequence[0],tag='img')
             self.animate(0,sequence)
+          '''  
         
+    
+    def init_first_image(self):
+        img_file = self.get_img_path()
         
-    def gen_menutext(self):
-        
-            menu_txt = ''
-            
-            menu_txt += 'Esc ==> Quit\n'
-            menu_txt += 'Alt+M ==> Toggle this menu\n'
-            menu_txt += 'Ctrl+Z ==> Undo move\n'
-            menu_txt += 'L/R arrows ==> prev/next image\n'
-            menu_txt += 'U/D arrows ==> +/- GIF animation speed\n'
-            menu_txt += 'F11 ==> toggle full screen\n'
-            menu_txt += 'F12 ==> toggle random display order\n'
-            menu_txt += 'TAB ==> toggle fit to canvas\n'
-            menu_txt += 'Ctrl+R ==> reload image\n'
-            
-            menu_txt += '\nPress key to move to subdirectory in {}\n'.format(settings.dest_root)
-            for key in settings.move_dict.keys():
-                menu_txt += '   {} ==> {}\n'.format(key,os.path.split(settings.move_dict[key])[1])
-            
-            return menu_txt
-        
-    def animate(self, counter,sequence):
-        
-        self.canvas.itemconfig(self.image, image=sequence[counter])
-        try:
-            self.canvas.delete('ctr_txt')
-        except:
-            print('no text to delete')
-        fn = os.path.split(self.img_list[self.cur_img])[1]
-        item = self.cur_img+1
-        num_items = len(self.img_list)
-        zoom_perc = '{}%'.format(int(self.abs_ratio*100))
-        if self.rand_order:
-            r_flag = '\nR'
-            height = 13
+        if img_file == None: 
+            sequence = None   
         else:
-            r_flag = ''
-            height = 5
-        counter_text = '{}({}/{} ({}:{}){}'.format(fn,item,num_items,self.zoomcycle,zoom_perc,r_flag)
-        text_item = self.canvas.create_text(5,height,fill='lightblue',anchor='w',font='times 10 bold',text=counter_text,tag='ctr_txt')
-        bbox = self.canvas.bbox(text_item)
-        rect_item = self.canvas.create_rectangle(bbox,fill='black',tag='ctr_txt')
-        self.canvas.tag_raise(text_item,rect_item)
+            sequence = self.gen_sequence(img_file)
+        self.open_img_window(sequence)
         
-        self.img_window.after(self.delay, lambda: self.animate((counter+1) % len(sequence),sequence))
+    def init_image(self):
+        img_file = self.get_img_path()
+        
+        
+        if img_file == None: 
+            sequence = None   
+        else:
+            sequence = self.gen_sequence(img_file)
+        
+        self.img_window.destroy()
+        self.open_img_window(sequence)
+            
+            
+            
+    def open_img_window(self,sequence):
+        self.img_window = tk.Toplevel(self.parent)
+        self.img_window.lift()
+        
+        if self.has_compare_window:
+            self.img_compare_window.lift()
+        
+        self.img_window.bind("<MouseWheel>",self.zoomer)
+        self.img_window.bind('<Motion>',self.motion)
+        self.img_window.bind("<Control-q>",self.quit_app)
+        self.img_window.bind("<Escape>",self.quit_app)
+        
+        self.img_window.bind('<ButtonPress-1>', self.move_from)
+        self.img_window.bind('<ButtonRelease-1>',     self.move_to)
+        
+        if self.full_screen:
+            self.img_window.attributes('-fullscreen', True)
+        else:
+            self.img_window.geometry(f'{self.img_window_width}x{self.img_window_height}+100+100')
+            
+        self.img_window.configure(background='black')
+        self.canvas = tk.Canvas(self.img_window,height=self.img_window_height,width=self.img_window_width, bg='black', highlightthickness=0)
+        self.canvas.pack()
+        
+        if sequence == None:
+            error_text = 'No images remain in list'
+            text_item = self.canvas.create_text(
+                int(self.img_window_width/2),
+                int(self.img_window_height/2),
+                fill='lightblue',
+                font='times 20 bold',
+                text=error_text,
+                tag='error_txt')
+            self.canvas.tag_raise(text_item)
+            self.canvas.update()
+            self.canvas.tag_raise(text_item)
+        else:
+            self.image = self.canvas.create_image(int(self.img_window_width/2),int(self.img_window_height/2), image=sequence[0],tag='img')
+            main_window = True
+            inputs = (self.canvas,self.img_window,self.image,main_window)
+            self.animate(0,sequence,inputs)
+            
+            
+            
+            # self.animate(0,sequence)
+                
+    # def animate(self, counter,sequence):
+        
+    #     self.canvas.itemconfig(self.image, image=sequence[counter])
+    #     try:
+    #         self.canvas.delete('ctr_txt')
+    #     except:
+    #         print('no text to delete')
+    #     fn = os.path.split(self.img_list[self.cur_img])[1]
+    #     item = self.cur_img+1
+    #     num_items = len(self.img_list)
+    #     zoom_perc = '{}%'.format(int(self.abs_ratio*100))
+    #     if self.rand_order:
+    #         r_flag = '\nR'
+    #         height = 13
+    #     else:
+    #         r_flag = ''
+    #         height = 5
+    #     counter_text = '{}({}/{} ({}:{}){}'.format(fn,item,num_items,self.zoomcycle,zoom_perc,r_flag)
+    #     text_item = self.canvas.create_text(5,height,fill='lightblue',anchor='w',font='times 10 bold',text=counter_text,tag='ctr_txt')
+    #     bbox = self.canvas.bbox(text_item)
+    #     rect_item = self.canvas.create_rectangle(bbox,fill='black',tag='ctr_txt')
+    #     self.canvas.tag_raise(text_item,rect_item)
+        
+    #     self.img_window.after(self.delay, lambda: self.animate((counter+1) % len(sequence),sequence))
+     
+        
+        
+    def animate(self, counter,sequence,inputs):
+        canvas,img_window,image,main_window = inputs
+        
+        canvas.itemconfig(image, image=sequence[counter])
+        
+        if main_window:
+            try:
+                canvas.delete('ctr_txt')
+            except:
+                print('no text to delete')
+            fn = os.path.split(self.img_list[self.cur_img])[1]
+            item = self.cur_img+1
+            num_items = len(self.img_list)
+            zoom_perc = '{}%'.format(int(self.abs_ratio*100))
+            if self.rand_order:
+                r_flag = '\nR'
+                height = 13
+            else:
+                r_flag = ''
+                height = 5
+            counter_text = '{}({}/{} ({}:{}){}'.format(fn,item,num_items,self.zoomcycle,zoom_perc,r_flag)
+            text_item = canvas.create_text(5,height,fill='lightblue',anchor='w',font='times 10 bold',text=counter_text,tag='ctr_txt')
+            bbox = canvas.bbox(text_item)
+            rect_item = canvas.create_rectangle(bbox,fill='black',tag='ctr_txt')
+            canvas.tag_raise(text_item,rect_item)
+        
+        img_window.after(self.delay, lambda: self.animate((counter+1) % len(sequence),sequence,inputs))
+        
+        
+        
+    def animate_compare(self, new_counter,existing_counter,inputs):
+        new_canvas,existing_canvas,both_canvas,new_img,existing_img = inputs
+        
+        new_canvas.itemconfig(new_img, image=self.new_sequence[new_counter])
+        existing_canvas.itemconfig(existing_img, image=self.existing_sequence[existing_counter])
+        tk.Misc.lower(new_canvas)
+        tk.Misc.lower(existing_canvas)
+        tk.Misc.lift(both_canvas)
+        
+        new_counter = (new_counter+1) % len(self.new_sequence)
+        existing_counter = (existing_counter+1) % len(self.existing_sequence)
+        self.img_compare_window.after(self.delay, lambda: self.animate_compare(new_counter,existing_counter,inputs))
             
             
 
