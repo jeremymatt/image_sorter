@@ -11,14 +11,15 @@ import os
 import copy as cp
 import random
 
-import time
 
 try:
     import settings
 except:
     import temp_settings as settings
 
-from shutil import copy2, move
+from shutil import move
+
+import imghdr
 
 class App:
     def __init__(self, parent):
@@ -100,8 +101,8 @@ class App:
         while len(dirs_to_process)>0:
             cur_dir = dirs_to_process.pop()
             new_files = [file for file in os.listdir(cur_dir) if os.path.isfile(os.path.join(cur_dir,file))]
-            new_files = [file for file in new_files if file.split('.')[-1].lower() in settings.img_formats]
             new_files = [os.path.join(cur_dir,file) for file in new_files]
+            new_files = [file for file in new_files if imghdr.what(file) != None]
             self.img_list.extend(new_files)
             
             if settings.include_sub_dirs:
