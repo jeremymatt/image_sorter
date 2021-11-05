@@ -233,8 +233,6 @@ class App:
         
     def keyup(self,event):
         key = event.char
-        if self.processing_duplicates:
-            print('ERROR: processing duplicates')
         if (key in settings.move_dict.keys()) and not self.processing_duplicates:
             self.dest_dir = settings.move_dict[key]
             if not os.path.isdir(self.dest_dir):
