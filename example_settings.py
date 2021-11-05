@@ -9,8 +9,12 @@ import os
 cd = os.getcwd()
 dest_root = os.path.join(cd,'sorted_pictures')
 
-
 source_dir = os.path.join(cd,'images')
+
+
+start_fullscreen = True
+include_sub_dirs = True
+random_display_order = False
 
 move_dict = {
     '.':'trash',
