@@ -23,16 +23,18 @@ import imghdr
 
 class App:
     def __init__(self, parent):
+        #Init the parent canvas
         self.parent = parent
         self.parent.lift()
         self.parent.focus_force()
         self.parent_canvas = tk.Canvas(parent, bg='black', highlightthickness=0)
         self.parent_canvas.pack(fill=tk.BOTH, expand=True)
         
+        #Record width & height of the screen
         self.screen_width = self.parent.winfo_screenwidth()
         self.screen_height = self.parent.winfo_screenheight()
         
-        
+        #Set the max/min steps in the zoom cycle
         self.MAX_ZOOM = 15
         self.MIN_ZOOM = -15
         
@@ -44,37 +46,48 @@ class App:
         for n in range(-1, self.MIN_ZOOM-1, -1):
             self.mux[n] = round(self.mux[n+1] * 0.9, 5)
         
-        
+        #Store the source dir from the settings file
         self.source_dir = settings.source_dir
         
+        #Set the temp trash directory and make if it doesn't exist
         self.trash_dest = os.path.join(settings.dest_root,'.temp_trash')
         if not os.path.isdir(self.trash_dest):
             os.makedirs(self.trash_dest)
         
+        #Get the list of images in the source directory
         self.get_img_list()
         
+        #Init the history list of previously viewed images for random view order
         self.previous_images = []
-        
+        #Set the index into the image list
         self.cur_img = 0
+        #Load the display order from the settings file
         self.rand_order = settings.random_display_order
-        self.fit_to_canvas = True
+        #Load zoom/shrink to canvas setting
+        self.fit_to_canvas = settings.fit_to_canvas
+        #Set new image flag (indicate that image frames need to be reloaded)
         self.new_image = True
+        #Default delay for the gif frame rate
         self.delay = 20
+        #Set the default non-full screen width height
         self.default_window_width = 500
         self.default_window_height= 500
+        #flag to indicate that there is no open image window
         self.img_window = None
+        #flag to indicate that a compare window is open
         self.has_compare_window = False
-        self.zoomcycle = 0
-        self.bbox_dx = 0
-        self.bbox_dy = 0
-        self.bbox_anchor = [0,0]
+        #Init a list of file move events for undo purposes
         self.move_events = []
+        #Flag to show the menu window
         self.show_menu = False
+        #Set flags to control duplicate file handling
         self.keep_both = False
         self.keep_new = False
         self.keep_existing = False
         self.processing_duplicates = False
+        #Load the full screen setting from the settings files
         self.full_screen = settings.start_fullscreen
+        #Init the window dimensions 
         if self.full_screen:
             self.img_window_width = self.screen_width
             self.img_window_height = self.screen_height
@@ -82,40 +95,103 @@ class App:
             self.img_window_width = self.default_window_width
             self.img_window_height = self.default_window_height
         
+        #Reset zoom and bounding box settings
         self.reset_zoomcycle()
-        self.img_window = self.parent
+        # set the parent keybindings
         self.set_keybindings(self.parent)
-        
+        #Initialize the first image of the run
         self.init_first_image()
         
     def reset_zoomcycle(self):
+        #Set the gif frame rate to default
+        self.delay = 20
+        #Set the zoomcycle position to default
         self.zoomcycle = 0
+        #Reset the variables tracking movement of the bounding box to zero
         self.bbox_dx = 0
         self.bbox_dy = 0
+        #Set the anchor to the upper left of the image and reset the bounding
+        #box to None
+        self.bbox_anchor = [0,0]
         self.bbox = None
         
     def get_img_list(self):
         
-        dirs_to_process = [self.source_dir]
-        self.img_list = []
-        while len(dirs_to_process)>0:
-            cur_dir = dirs_to_process.pop()
-            new_files = [file for file in os.listdir(cur_dir) if os.path.isfile(os.path.join(cur_dir,file))]
-            new_files = [os.path.join(cur_dir,file) for file in new_files]
-            new_files = [file for file in new_files if imghdr.what(file) != None]
-            self.img_list.extend(new_files)
+        file_list_fn = os.path.join(self.source_dir,'.files')
+        
+        #If an image list file exists, load from file, else inspect directories
+        #for image files
+        if os.path.isfile(file_list_fn):
+            print('reading file list')
+            self.read_file_list()
+        else:
             
-            if settings.include_sub_dirs:
-                new_dirs = [item for item in os.listdir(cur_dir) if os.path.isdir(os.path.join(cur_dir,item))]
-                dirs_to_process.extend([os.path.join(cur_dir,item) for item in new_dirs])
+            dirs_to_process = [self.source_dir]
+            self.img_list = []
+            while len(dirs_to_process)>0:
+                print('{} files, {} dirs to process'.format(len(self.img_list),len(dirs_to_process)))
+                #Pop directory from list to process
+                cur_dir = dirs_to_process.pop()
+                #list of all files in the directory
+                new_files = [file for file in os.listdir(cur_dir) if os.path.isfile(os.path.join(cur_dir,file))]
+                #Add absolute path to the file names
+                new_files = [os.path.join(cur_dir,file) for file in new_files]
+                #Check if file is an image file
+                new_files = [file for file in new_files if imghdr.what(file) != None]
+                #Add new images to the image list
+                self.img_list.extend(new_files)
+                
+                #Recursively include subdirectories
+                if settings.include_sub_dirs:
+                    #Add subdirectories in the current directory to the directories to check
+                    new_dirs = [item for item in os.listdir(cur_dir) if os.path.isdir(os.path.join(cur_dir,item))]
+                    dirs_to_process.extend([os.path.join(cur_dir,item) for item in new_dirs])
+                    
             
+    def read_file_list(self):
+        #Load the image list from file
+        file_list_fn = os.path.join(self.source_dir,'.files')
+                
+        with open(file_list_fn,'r') as file:
+            lines = file.readlines()
+            
+        self.img_list = [line.strip() for line in lines]
+            
+    def write_file_list(self):
+        #Write the image list to file
+        file_list_fn = os.path.join(self.source_dir,'.files')
+        
+        with open(file_list_fn,'w') as file:
+            for fn in self.img_list:
+                file.write('{}\n'.format(fn))
+                
+                
+    def reload_img_list(self,dummy=None):
+        #Force check of source directory for image files
+        file_list_fn = os.path.join(self.source_dir,'.files')
+        
+        if os.path.isfile(file_list_fn):
+            print('removing old list')
+            os.remove(file_list_fn)
+            
+        self.cur_img = 0
+        
+        self.get_img_list()
+        
+        self.reload_img()
+        
+        
             
         
     def show_menu_window(self,dummy=None):
+        #Init the menu window 
         self.menu_window = tk.Toplevel(self.parent)
+        #Add a canvas
         canvas = tk.Canvas(self.menu_window,height=1000,width=500)
         canvas.pack()
+        #Get the text for the menu
         menu_txt = self.gen_menutext()
+        #Create a text item of the menu text
         text_item = canvas.create_text(
             25,
             25,
@@ -123,15 +199,20 @@ class App:
             font='times 10 bold',
             text=menu_txt,tag='menu_txt',
             anchor=tk.NW)
+        #Make a bounding box around the text to determine required window size
         bbox = canvas.bbox(text_item)
         dim = (bbox[2]-bbox[0]+100,bbox[3]-bbox[1]+100)
+        #Set the window geometry to the dimensions of the bounding box plus 
+        #some padding and move the text item to the upper left of the window
         self.menu_window.geometry(f'{dim[0]}x{dim[1]}+0+0')
         canvas.move(text_item,25,25)
         canvas.update()
         canvas.tag_raise(text_item)
         
     def set_keybindings(self,window):
+        #Set keybindings for the program controls
         window.bind('<F11>', self.toggle_fs)
+        window.bind('<F1>', self.reload_img_list)
         window.bind('<Right>', self.load_next_img)
         window.bind('<Left>', self.load_prev_img)
         window.bind('-', self.increase_delay)
@@ -153,98 +234,136 @@ class App:
         window.bind('<End>',self.close_img_compare_window)
         
     def set_keep_new_flag(self,dummy=None):
+        #Set flag to indicate that the user wants to keep the file from the 
+        #source directory
         if self.processing_duplicates:
             self.keep_new = True
             self.move_file()
         
     def set_keep_existing_flag(self,dummy=None):
+        #Set flag to indicate that the user wants to keep the file from the 
+        #target directory
         if self.processing_duplicates:
             self.keep_existing = True
             self.move_file()
         
     def set_keep_both_flag(self,dummy=None):
+        #Set flag to indicate that the user wants to keep both duplicate files
         if self.processing_duplicates:
             self.keep_both = True
             self.move_file()
         
         
     def rotate_cw(self,dummy=None):
+        #Increment the rotation by 90 degrees
         self.rotation += 90
+        #Store the sign of the rotation direction for use after the mod
         if self.rotation == 0:
             sign = 1
         else:
             sign = self.rotation/abs(self.rotation)
+        #Restrict the rotation to -360:360
         self.rotation %= sign*360
+        #convert to integer
         self.rotation = int(self.rotation)
         
+        #Swap the height and the width dimensions of the image
         temp = cp.deepcopy(self.img_height)
         self.img_height = cp.deepcopy(self.img_width)
         self.img_width = temp
-        self.bbox = None
-        self.zoomcycle = 0
+        #reset the zoom and bounding box
+        self.reset_zoomcycle()
+        #Display the image
         self.init_image()
         
     def rotate_ccw(self,dummy=None):
+        #Decrement the rotation by 90 degrees
         self.rotation -= 90
+        #Store the sign of the rotation direction for use after the mod
         if self.rotation == 0:
             sign = 1
         else:
             sign = self.rotation/abs(self.rotation)
+        #Restrict the rotation to -360:360
         self.rotation %= sign*360
+        #convert to integer
         self.rotation = int(self.rotation)
         
+        #Swap the height and the width dimensions of the image
         temp = cp.deepcopy(self.img_height)
         self.img_height = cp.deepcopy(self.img_width)
         self.img_width = temp
-        self.bbox = None
-        self.zoomcycle = 0
+        #reset the zoom and bounding box
+        self.reset_zoomcycle()
+        #Display the image
         self.init_image()
         
         
     def toggle_rand_order(self,dummy=None):
+        #display the images in the image list sequentially or in random order
         if self.rand_order:
             self.rand_order = False
+            #Clear the previously-viewed image history
             self.previous_images = []
         else:
             self.rand_order = True
         
     
     def motion(self,event):
+        #Track motion of the mouse
         self.mouse_x,self.mouse_y = event.x,event.y
         
     def move_from(self,event):
+        #Store starting point of image pan
         self.start_x = event.x
         self.start_y = event.y
         
     def move_to(self,event):
+        #Store end point of image pan
         end_x = event.x
         end_y = event.y
         
+        #Calculate how far the bounding box moved
         self.bbox_dx = end_x-self.start_x
         self.bbox_dy = end_y-self.start_y
+        #Update the bounding box after pan and display image
         self.update_bbox_pan()
         self.init_image()
         
     def get_img_path(self):
+        #If there are no images in the list, return None, otherwise return the
+        #absolute path of the current image
         if len(self.img_list) == 0:
             return None
         else:
             return self.img_list[self.cur_img]
         
     def keyup(self,event):
+        #Function to track key releases for moving files
+        #Store the key that was released
         key = event.char
         if (key in settings.move_dict.keys()) and not self.processing_duplicates:
+            #Reload the image to reset zoom
+            self.reload_img()
+            #Store the destination directory based on the key pressed
             self.dest_dir = settings.move_dict[key]
+            #If the destination directory doesn't exist, create it
             if not os.path.isdir(self.dest_dir):
                 os.makedirs(self.dest_dir)
+            #Move the file
             self.move_file()
         
     def quit_app(self,dummy=None):
+        #Write the file list to file
+        self.write_file_list()
+        #If the temp trash directory exists, empty it and remove the temp 
+        #directory
         if os.path.isdir(self.trash_dest):
             files = [os.path.join(self.trash_dest,file) for file in os.listdir(self.trash_dest)]
             for file in files:
                 os.remove(file)
             os.rmdir(self.trash_dest)
+        #Destroy the application
         self.parent.destroy()
         
     def toggle_menu(self,dummy=None):
@@ -277,6 +396,7 @@ class App:
                 menu_txt += 'Ctrl+Z ==> Undo move\n'
                 menu_txt += 'L/R arrows ==> prev/next image\n'
                 menu_txt += 'U/D arrows ==> +/- GIF animation speed\n'
+                menu_txt += 'F1  ==> reload img list from directory\n'
                 menu_txt += 'F11 ==> toggle full screen\n'
                 menu_txt += 'F12 ==> toggle random display order\n'
                 menu_txt += 'TAB ==> toggle fit to canvas\n'
@@ -290,9 +410,13 @@ class App:
             return menu_txt
             
     def show_img_compare_window(self,files=None):
+        #Open a window to compare duplicate images
+        #If there's an existing compare window, close it
         if self.has_compare_window:
             self.img_compare_window.destroy()
+        #Flag to indicate that compare window exists
         self.has_compare_window = True
+        #If there are exactly two files, compare them
         if len(files)==2:
             new_file,existing_file = files
             self.open_compare_window(new_file,existing_file)
@@ -300,6 +424,8 @@ class App:
             print('Expected 2 files, got {}'.format(len(filest = ())))
         
     def close_img_compare_window(self,dummy=None):
+        #User has selected a duplicate resolution, stop comparing images and
+        #reset flags to prep for next duplicate
         if self.has_compare_window:
             self.new_file.close()
             self.existing_file.close()
@@ -311,60 +437,103 @@ class App:
         self.keep_new = False
         
     def move_file(self):
+        #Store the current file in local variable
         file = self.img_list[self.cur_img]
+        #Split off the filename
         orig_fn = os.path.split(self.img_list[self.cur_img])[1]
+        #Split the filename into name and extension
         fn_parts = orig_fn.split('.')
+        #Cancel if more or less than 1 period in filename
         if len(fn_parts) != 2:
             print('WARNING: UNEXPECTED NUMBER OF FILENAME PARTS\n  file not moved')
             return
         
+        #List the files in the destination directory to check for dups
         dest_files = [file for file in os.listdir(self.dest_dir) if os.path.isfile(os.path.join(self.dest_dir,file))]
         
+        #If not working on processing a duplicate, set the destination filename
+        #to the original filename and store in self
         if not self.processing_duplicates:
             self.dest_fn = orig_fn
         
+        #Check of destination file name exists in destination directory 
+        #or if working on processing a duplicate
         if (self.dest_fn in dest_files) or self.processing_duplicates:
+            #Set the processing duplicates flag
             self.processing_duplicates = True
+            #If the user has NOT made a decision on which duplicate to keep
             if not any([self.keep_both,self.keep_existing,self.keep_new]):
+                #Initialize the filename counter
                 self.move_ctr = 1
+                #Open a compare window and display both images
                 self.show_img_compare_window((file,os.path.join(self.dest_dir,os.path.join(self.dest_dir,self.dest_fn))))
             else:
+                #User has elected to keep both files
                 if self.keep_both:
+                    #Reset the flag to keep both
                     self.keep_both = False
+                    #Generate an alternate filename from the original filename
+                    #and extension and the filename counter
                     self.dest_fn = '{}({}).{}'.format(fn_parts[0],self.move_ctr,fn_parts[1])
                     if self.dest_fn in dest_files:
+                        #If the new file name exists, increment the move counter
+                        #and display the new duplicate pair
                         self.move_ctr+=1
                         self.show_img_compare_window((file,os.path.join(self.dest_dir,os.path.join(self.dest_dir,self.dest_fn))))
                     else:
+                        #If the new file name does not exist in the dest. dir
+                        #close the compare window
                         self.close_img_compare_window()
+                        #Close the PIL image file
                         self.open_image.close()
+                        #Generate the absolute path to the destination
                         dest_file = os.path.join(self.dest_dir,self.dest_fn)
+                        #Store the move in the move history
                         moved_files = [(file,dest_file)]
                         self.move_events.append((moved_files,cp.deepcopy(self.cur_img),cp.deepcopy(self.img_list)))
                         
+                        #Move the file to the destination and update the image
+                        #list
                         move(file,dest_file)
                         self.update_img_list(file)
                         
-                        
+                #User has elected to keep the file in the destination directory        
                 elif self.keep_existing:
+                    #Close the compare window
                     self.close_img_compare_window()
+                    #Close the PIL image file
                     self.open_image.close()
                     
+                    #Move the file in the source directory to the temporary
+                    #trash direcetory
                     trash_dest_fn = os.path.join(self.trash_dest,orig_fn)
+                    #Move the file
                     move(file,trash_dest_fn)
+                    #Store the move in the move history & update the image
+                    #list
                     moved_files = [(file,trash_dest_fn)]
                     self.move_events.append((moved_files,cp.deepcopy(self.cur_img),cp.deepcopy(self.img_list)))
                     self.update_img_list(file)
-                    
+                
+                #User has elected to keep the file in the source directory
                 elif self.keep_new:
+                    #Close the compare window
                     self.close_img_compare_window()
+                    #Close the PIL image file
                     self.open_image.close()
                     
+                    #Move the file in the destination directory to the temporary
+                    #trash direcetory
                     trash_dest_fn = os.path.join(self.trash_dest,self.dest_fn)
                     existing_file = os.path.join(self.dest_dir,self.dest_fn)
+                    #Store the move in the move history & update the image
+                    #list
                     moved_files = [(existing_file,trash_dest_fn)]
                     move(existing_file,trash_dest_fn)
                     
+                    #Move the file in the source directory to the destination
+                    #directory, store the move history, & update the image
+                    #list
                     dest_file = os.path.join(self.dest_dir,self.dest_fn)
                     moved_files.append((file,dest_file))
                     move(file,dest_file)
@@ -372,6 +541,9 @@ class App:
                     self.move_events.append((moved_files,cp.deepcopy(self.cur_img),cp.deepcopy(self.img_list)))
                     self.update_img_list(file)
         else:
+            #Move the file in the source directory to the destination
+            #directory, store the move history, & update the image
+            #list
             dest_file = os.path.join(self.dest_dir,self.dest_fn)
             moved_files = [(file,dest_file)]
             self.move_events.append((moved_files,cp.deepcopy(self.cur_img),cp.deepcopy(self.img_list)))
@@ -381,28 +553,39 @@ class App:
             
             
     def update_img_list(self,file):
-        
+        #Remove the moved file from the image list
         self.img_list.remove(file)
+        #If the last image was removed, set the image index to the start
         if self.cur_img >= len(self.img_list):
             self.cur_img = 0
-            
+         
+        #Set the new image flag
         self.new_image = True
+        #Close the PIL open image file, reset the zoom cycle and initialize
+        #the next image
         self.open_image.close()
         self.reset_zoomcycle()
         self.init_image()
         
         
     def undo(self,dummy=None):
+        #Pop the move source/dest directories, the old image index and the old
+        #image list from the move events list
         moved_files,self.cur_img,self.img_list = self.move_events.pop()
+        #Undo the move(s)
         while len(moved_files)>0:
             moved_from,moved_to = moved_files.pop()
             move(moved_to,moved_from)
+        #Close the PIL open image file, reset the zoom cycle and initialize
+        #the next image
         self.reset_zoomcycle()
         self.new_image = True
         self.open_image.close()
         self.init_image()
         
     def zoomer(self,event):
+        #Increment or decrement the zoom step based on the mouse wheel
+        #movement
         if (event.delta > 0 and self.zoomcycle < self.MAX_ZOOM):
             self.zoomcycle += 1
         elif (event.delta < 0 and self.zoomcycle > self.MIN_ZOOM):
@@ -411,11 +594,14 @@ class App:
             print('Max/Min zoom reached!')
             return
         
+        #Update the bounding box
         self.update_bbox_zoom()
+        #Display the zoomed image
         self.init_image()
 
         
     def toggle_fs(self,dummy=None):
+        #Toggle full screen mode
         if self.full_screen:
             self.full_screen = False
             self.img_window_width = self.default_window_width
@@ -429,6 +615,7 @@ class App:
         self.init_image()
         
     def toggle_fit_to_canvas(self,dummy=None):
+        #Toggle zoom/shrink to fit canvas
         if self.fit_to_canvas:
             self.fit_to_canvas = False
         else:
@@ -437,45 +624,69 @@ class App:
         self.init_image()
             
     def increase_delay(self,dummy=None):
+        #Increase the delay between gif frames (slow the animation)
         self.delay += 5
         
     def decrease_delay(self,dummy=None):
+        #Decrease the delay between gif frames (speed up the animation)
         self.delay -= 5
         if self.delay <= 0:
             self.delay = 5
         
         
     def load_next_img(self,dummy=None):
+        #Move to the next image
+        #If there is a duplicate compare window open, close it and reset the 
+        #compare flags
         self.close_img_compare_window()
+        #Reset zoom
         self.reset_zoomcycle()
+        #If the display is in random order, generate a random step size and add
+        #the current image to the view history list
         if self.rand_order:
             step = random.randint(0,len(self.img_list)-2)
             self.previous_images.append(self.cur_img)
         else:
             step = 1
+        #Increment the current image index and mod by the number of items
+        #in the image list
         self.cur_img = (self.cur_img+step) % len(self.img_list)
         self.new_image = True
+        #Close the PIL image file and init the new image
         self.open_image.close()
         self.init_image()
         
     def load_prev_img(self,dummy=None):
+        #Move to the next image
+        #If there is a duplicate compare window open, close it and reset the 
+        #compare flags
         self.close_img_compare_window()
+        #Reset zoom
         self.reset_zoomcycle()
+        #If there are images in the image history list
         if len(self.previous_images)>0:
+            #Pop the previous image from the history list
             cur_img = self.previous_images.pop()
+            #If the image from the history is the same as the current image
+            #pop another image from the history list
             if cur_img == self.cur_img:
                 self.cur_img = self.previous_images.pop()
             else:
                 self.cur_img = cur_img
         else:
+            #Decrement the current image index.  If the resulting index is less 
+            #than zero, set the index to the last image.
             self.cur_img -= 1
             if self.cur_img < 0:
                 self.cur_img = len(self.img_list)-1
+        #Set the new image flag, close the PIL image file, and init the new 
+        #image
         self.new_image = True
         self.open_image.close()
         self.init_image()
         
     def reload_img(self,dummy=None):
+        #Reset the image display parameters and re-display the current image
         self.delay = 20
         self.reset_zoomcycle()
         self.init_image()
@@ -825,7 +1036,10 @@ class App:
                 canvas.delete('ctr_txt')
             except:
                 print('no text to delete')
-            fn = os.path.split(self.img_list[self.cur_img])[1]
+                
+            parts = os.path.split(self.img_list[self.cur_img])
+            fn = parts[1]
+            folder = os.path.split(parts[0])[1]
             item = self.cur_img+1
             num_items = len(self.img_list)
             zoom_perc = '{}%'.format(int(self.abs_ratio*100))
@@ -835,7 +1049,7 @@ class App:
             else:
                 r_flag = ''
                 height = 5
-            counter_text = '{}({}/{} ({}:{}){}'.format(fn,item,num_items,self.zoomcycle,zoom_perc,r_flag)
+            counter_text = '{}/{}({}/{} ({}:{}){}'.format(folder,fn,item,num_items,self.zoomcycle,zoom_perc,r_flag)
             text_item = canvas.create_text(5,height,fill='lightblue',anchor='w',font='times 10 bold',text=counter_text,tag='ctr_txt')
             bbox = canvas.bbox(text_item)
             rect_item = canvas.create_rectangle(bbox,fill='black',tag='ctr_txt')
