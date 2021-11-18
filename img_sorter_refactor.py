@@ -159,11 +159,14 @@ class App:
         self.num_removed = 0
         #Call recursive rmdirs function on source dirs
         self.rmdirs(self.source_dir)
-        print('done')
+        print("\r", end="")
+        print('\nDone removing empty directories')
                     
     def rmdirs(self,cur_dir):  
         #Print the state
-        print('{} dirs checked, {} dirs removed'.format(self.num_dirs,self.num_removed))
+        if self.num_dirs > 1:
+            print("\r", end="")
+        print('{} dirs checked, {} dirs removed'.format(self.num_dirs,self.num_removed), end="")
         #List the items in the directory
         dir_list = os.listdir(cur_dir)
         #Store the files and subdirectories in separate lists
@@ -942,24 +945,31 @@ class App:
         
     def open_compare_window(self,new_file,existing_file):
         
-        
+        #Open a PIL image for the duplicate files in the source and destination
+        #directories
         self.new_file = Image.open(new_file)
         self.existing_file = Image.open(existing_file)
+        #Init iterator for the duplicate files in the source and destination
+        #directories
         self.iterator_new = ImageSequence.Iterator(self.new_file)
         self.iterator_existing = ImageSequence.Iterator(self.existing_file)
         
+        #Get the dimensions of the dup files in the source and destination
+        #directories
         new_width,new_height = Image.open(new_file).size
         existing_width,existing_height = Image.open(existing_file).size
         
+        #Generate sequence for the dup files
         self.new_sequence = self.gen_compare_sequence(self.iterator_new,new_width,new_height)
         self.existing_sequence = self.gen_compare_sequence(self.iterator_existing,existing_width,existing_height)
-            
+        #Convert the sequences to lists of frames
         self.new_sequence = [ImageTk.PhotoImage(img) for img in self.new_sequence]
-        
         self.existing_sequence = [ImageTk.PhotoImage(img) for img in self.existing_sequence]
         
+        #Open the compare window
         self.img_compare_window = tk.Toplevel(self.parent)
         
+        #Bind basic keystrokes
         self.img_compare_window.bind("<MouseWheel>",self.zoomer)
         self.img_compare_window.bind('<Motion>',self.motion)
         self.img_compare_window.bind("<Control-q>",self.quit_app)
@@ -969,11 +979,14 @@ class App:
         self.img_compare_window.bind('3',self.set_keep_both_flag)
         self.img_compare_window.bind('<End>',self.close_img_compare_window)
         
+        #Set the dimensions and location of the compare window
         compare_width = 2*self.default_window_width+5
         self.img_compare_window.geometry(f'{compare_width}x{self.default_window_height}+100+100')
-            
+        #set the background of the compare window to white
         self.img_compare_window.configure(background='white')
         
+        #Init canvas for the file in the source directory and place the canvas
+        #on the left side of the window
         new_canvas = tk.Canvas(
             self.img_compare_window,
             height=self.default_window_height,
@@ -982,8 +995,8 @@ class App:
             highlightthickness=0)
         new_canvas.place(x=0, y=0,anchor=tk.NW)
         
-        
-        
+        #Init canvas for the file in the destination directory and place the canvas
+        #on the right side of the window
         existing_canvas = tk.Canvas(
             self.img_compare_window,
             height=self.default_window_height,
@@ -992,41 +1005,44 @@ class App:
             highlightthickness=0)
         existing_canvas.place(x=self.default_window_width+5, y=0,anchor=tk.NW)
         
+        #Add an image object to the canvas for the source directory file
         new_image = new_canvas.create_image(
             int(self.default_window_width/2),
             int(self.default_window_height/2), 
             image=self.new_sequence[0],
             tag='new_img')
-        
+        #Print the name and dimensions of the source directory file
         txt = '{}({}x{}'.format(new_file,new_width,new_height)
         text_item = new_canvas.create_text(5,5,fill='lightblue',anchor='w',font='times 10 bold',text=txt,tag='new_txt')
         bbox = new_canvas.bbox(text_item)
         rect_item = new_canvas.create_rectangle(bbox,fill='black',tag='new_txt')
         new_canvas.tag_raise(text_item,rect_item)
-        
+        #Label the source directory image with "1" (they keystroke to keep this file)
         text_item = new_canvas.create_text(int(self.default_window_width/2),self.default_window_height-25,fill='lightblue',anchor=tk.S,font='times 20 bold',text='1',tag='new_txt')
         bbox = new_canvas.bbox(text_item)
         rect_item = new_canvas.create_rectangle(bbox,fill='blue',tag='new_txt')
         new_canvas.tag_raise(text_item,rect_item)
         
+        #Add an image object to the canvas for the destination directory file
         existing_image = existing_canvas.create_image(
             int(self.default_window_width/2),
             int(self.default_window_height/2), 
             image=self.existing_sequence[0],
             tag='new_img')
-        
+        #Print the name and dimensions of the destination directory file
         txt = '{}({}x{}'.format(existing_file,existing_width,existing_height)
         text_item = existing_canvas.create_text(5,5,fill='lightblue',anchor='w',font='times 10 bold',text=txt,tag='ex_txt')
         bbox = existing_canvas.bbox(text_item)
         rect_item = existing_canvas.create_rectangle(bbox,fill='black',tag='ex_txt')
         existing_canvas.tag_raise(text_item,rect_item)
-        
+        #Label the source directory image with "2" (they keystroke to keep this file)
         text_item = existing_canvas.create_text(int(self.default_window_width/2),self.default_window_height-25,fill='lightblue',anchor=tk.S,font='times 20 bold',text='2',tag='ex_txt')
         bbox = existing_canvas.bbox(text_item)
         rect_item = existing_canvas.create_rectangle(bbox,fill='blue',tag='ex_txt')
         existing_canvas.tag_raise(text_item,rect_item)
         
-        
+        #Add a small canvas between the two images and place "3" on it (the 
+        #keystroke to keep both the source and destination files)
         height = 30
         width=150
         both_canvas = tk.Canvas(
@@ -1039,60 +1055,76 @@ class App:
         text_item = both_canvas.create_text(int(width/2),0,fill='lightblue',anchor=tk.N,font='times 20 bold',text='keep both: 3',tag='ex_txt')
         both_canvas.place(x=self.default_window_width+2, y=self.default_window_height-5,anchor=tk.S)
         
+        #Build the inputs tuple and animate the compare window
         inputs = new_canvas,existing_canvas,both_canvas,new_image,existing_image
         self.animate_compare(0,0,inputs)
         
         
     
     def init_first_image(self):
+        #Initialize the window for the first image of the session.  Required
+        #because loading the image with a call to the destroy function (even 
+        #located behind conditional statements) results in errors.  Not entirely
+        #sure why
+        
+        #Get the path to the current image
         img_file = self.get_img_path()
         
+        #If there's no image file, flag the sequence as "None".  Otherwise open
+        #the file and generate the sequence
         if img_file == None: 
             sequence = None   
         else:
             sequence = self.gen_sequence(img_file)
+        #Open an image window and load the image sequence
         self.open_img_window(sequence)
         
     def init_image(self):
+        
+        #Get the path to the current image
         img_file = self.get_img_path()
         
-        
+        #If there's no image file, flag the sequence as "None".  Otherwise open
+        #the file and generate the sequence
         if img_file == None: 
             sequence = None   
         else:
             sequence = self.gen_sequence(img_file)
-        
+        #Close the existing image window
         self.img_window.destroy()
+        #Open an image window and load the image sequence
         self.open_img_window(sequence)
             
             
             
     def open_img_window(self,sequence):
+        #Open a new window and lift it to the front
         self.img_window = tk.Toplevel(self.parent)
+        
+        self.parent.focus_force()
         self.img_window.lift()
         
+        #If there is a compare window, lift that to the top
         if self.has_compare_window:
             self.img_compare_window.lift()
         
-        self.img_window.bind("<MouseWheel>",self.zoomer)
-        self.img_window.bind('<Motion>',self.motion)
-        self.img_window.bind("<Control-q>",self.quit_app)
-        self.img_window.bind("<Escape>",self.quit_app)
+        #Bind controls
+        self.set_keybindings(self.img_window)
         
-        self.img_window.bind('<ButtonPress-1>', self.move_from)
-        self.img_window.bind('<ButtonRelease-1>',     self.move_to)
-        
+        #Set the window geometry
         if self.full_screen:
             self.img_window.attributes('-fullscreen', True)
         else:
             self.img_window.geometry(f'{self.img_window_width}x{self.img_window_height}+100+100')
             
+        #Set the background to black and add a black canvas
         self.img_window.configure(background='black')
         self.canvas = tk.Canvas(self.img_window,height=self.img_window_height,width=self.img_window_width, bg='black', highlightthickness=0)
         self.canvas.pack()
         
+        #If there are no images, inform the user
         if sequence == None:
-            error_text = 'No images remain in list'
+            error_text = 'No images in the \ncurrently loaded list of images\n\nPress F1 to re-check \nthe source directory'
             text_item = self.canvas.create_text(
                 int(self.img_window_width/2),
                 int(self.img_window_height/2),
@@ -1104,61 +1136,83 @@ class App:
             self.canvas.update()
             self.canvas.tag_raise(text_item)
         else:
+            #Create an image on the canvas and load first frame in the image sequence
             self.image = self.canvas.create_image(int(self.img_window_width/2),int(self.img_window_height/2), image=sequence[0],tag='img')
-            main_window = True
-            inputs = (self.canvas,self.img_window,self.image,main_window)
+            inputs = (self.canvas,self.img_window,self.image)
             self.animate(0,sequence,inputs)
             
         
     def animate(self, counter,sequence,inputs):
-        canvas,img_window,image,main_window = inputs
-        
+        #Unpack the inputs
+        canvas,img_window,image = inputs
+        #Reset the image frame to the one designated by the frame counter
         canvas.itemconfig(image, image=sequence[counter])
         
-        if main_window:
-            try:
-                canvas.delete('ctr_txt')
-            except:
-                print('no text to delete')
-                
-            parts = os.path.split(self.img_list[self.cur_img])
-            fn = parts[1]
-            folder = os.path.split(parts[0])[1]
-            item = self.cur_img+1
-            num_items = len(self.img_list)
-            zoom_perc = '{}%'.format(int(self.abs_ratio*100))
-            if self.rand_order:
-                r_flag = '\nR'
-                height = 13
-            else:
-                r_flag = ''
-                height = 5
-            counter_text = '{}/{}({}/{} ({}:{}){}'.format(folder,fn,item,num_items,self.zoomcycle,zoom_perc,r_flag)
-            text_item = canvas.create_text(5,height,fill='lightblue',anchor='w',font='times 10 bold',text=counter_text,tag='ctr_txt')
-            bbox = canvas.bbox(text_item)
-            rect_item = canvas.create_rectangle(bbox,fill='black',tag='ctr_txt')
-            canvas.tag_raise(text_item,rect_item)
+        #Try to delete existing text from the frame
+        try:
+            canvas.delete('ctr_txt')
+        except:
+            print('no text to delete')
         
+        #Extract the image file name from the absolute path
+        parts = os.path.split(self.img_list[self.cur_img])
+        fn = parts[1]
+        #Extract the name of the containing folder from the absolute path
+        folder = os.path.split(parts[0])[1]
+        #The number of the item in the image list (convert to one-indexing)
+        item = self.cur_img+1
+        #The number of items in the image list
+        num_items = len(self.img_list)
+        #Convert the absolute zoom percentage to a string
+        zoom_perc = '{}%'.format(int(self.abs_ratio*100))
+        #If displaying in random order, display a flag and set the height of
+        #the text
+        if self.rand_order:
+            r_flag = '\nR'
+            height = 13
+        else:
+            r_flag = ''
+            height = 5
+        #Build the info text string including the folder, file name, item numbers, 
+        #the zoom cycle and percentage, and the random flag
+        counter_text = '{}/{}({}/{} ({}:{}){}'.format(folder,fn,item,num_items,self.zoomcycle,zoom_perc,r_flag)
+        #Add the info text over a black rectangle to the canvas
+        text_item = canvas.create_text(5,height,fill='lightblue',anchor='w',font='times 10 bold',text=counter_text,tag='ctr_txt')
+        bbox = canvas.bbox(text_item)
+        rect_item = canvas.create_rectangle(bbox,fill='black',tag='ctr_txt')
+        canvas.tag_raise(text_item,rect_item)
+        
+        #After the delay specified by the GIF animation frame rate parameter
+        #increment the counter, mod it by the number of frames in the animation
+        #and call the animate function again.
         img_window.after(self.delay, lambda: self.animate((counter+1) % len(sequence),sequence,inputs))
         
-        
-        
     def animate_compare(self, new_counter,existing_counter,inputs):
+        #Unpack the inputs
         new_canvas,existing_canvas,both_canvas,new_img,existing_img = inputs
         
+        #Update the canvas for the source-directory file with the new frame
         new_canvas.itemconfig(new_img, image=self.new_sequence[new_counter])
+        #Update the canvas for the destination-directory file with the new frame
         existing_canvas.itemconfig(existing_img, image=self.existing_sequence[existing_counter])
+        #Arrange the canvases with the "3" for "keep both" on top
         tk.Misc.lower(new_canvas)
         tk.Misc.lower(existing_canvas)
         tk.Misc.lift(both_canvas)
         
+        #Increment the counters and mod by the number of frames in each sequence
         new_counter = (new_counter+1) % len(self.new_sequence)
         existing_counter = (existing_counter+1) % len(self.existing_sequence)
+        #After the GIF animation delay, call the compare window animation function
+        #again
         self.img_compare_window.after(self.delay, lambda: self.animate_compare(new_counter,existing_counter,inputs))
             
             
-
+#Init a tkinter application
 root = tk.Tk()
+#Make the root window full screen (reduces blinking when switching between windows
+#but makes it harder to view console outputs)
 # root.attributes('-fullscreen', True)
+#Initialize the application object and start the run
 app = App(root)
 root.mainloop()
