@@ -10,6 +10,7 @@ from PIL import Image, ImageTk, ImageSequence, ImageOps
 import os
 import copy as cp
 import random
+import inspect
 
 
 try:
@@ -111,9 +112,9 @@ class App:
         self.bbox_dx = 0
         self.bbox_dy = 0
         #Set the anchor to the upper left of the image and reset the bounding
-        #box to None
+        #box flag to false
         self.bbox_anchor = [0,0]
-        self.bbox = None
+        self.bbox = False
         
     def get_img_list(self):
         
@@ -124,7 +125,12 @@ class App:
         if os.path.isfile(file_list_fn):
             print('reading file list')
             self.read_file_list()
+            #Indicate that the existing file list was read from file
+            self.img_list_updated = False
         else:
+            #Indicate that the existing file list was updated from the directory
+            self.img_list_updated = True
+        
             
             dirs_to_process = [self.source_dir]
             self.img_list = []
@@ -146,6 +152,38 @@ class App:
                     #Add subdirectories in the current directory to the directories to check
                     new_dirs = [item for item in os.listdir(cur_dir) if os.path.isdir(os.path.join(cur_dir,item))]
                     dirs_to_process.extend([os.path.join(cur_dir,item) for item in new_dirs])
+    
+    def remove_empty_dirs(self,dummy = None):
+        #Init the number of dirs and removed dirs counters
+        self.num_dirs = 1
+        self.num_removed = 0
+        #Call recursive rmdirs function on source dirs
+        self.rmdirs(self.source_dir)
+        print('done')
+                    
+    def rmdirs(self,cur_dir):  
+        #Print the state
+        print('{} dirs checked, {} dirs removed'.format(self.num_dirs,self.num_removed))
+        #List the items in the directory
+        dir_list = os.listdir(cur_dir)
+        #Store the files and subdirectories in separate lists
+        new_files = [file for file in dir_list if os.path.isfile(os.path.join(cur_dir,file))]
+        new_dirs = [os.path.join(cur_dir,item) for item in dir_list if os.path.isdir(os.path.join(cur_dir,item))]
+        #For each subdirectory, increment the counter and call the rmdirs function
+        for new_dir in new_dirs:
+            self.num_dirs += 1
+            self.rmdirs(new_dir)
+        
+        #After checking all subdirectories, re-list the directory and 
+        #list any remaining directories
+        dir_list = os.listdir(cur_dir)
+        non_empty_dirs = [item for item in dir_list if os.path.isdir(os.path.join(cur_dir,item))]
+        #If there are no files files and no remaining subdirectories, remove
+        #the directory and increment the counter
+        if (len(new_files)+len(non_empty_dirs)) == 0:
+            os.rmdir(cur_dir)
+            self.num_removed += 1
+            
                     
             
     def read_file_list(self):
@@ -170,18 +208,16 @@ class App:
         #Force check of source directory for image files
         file_list_fn = os.path.join(self.source_dir,'.files')
         
+        #If a file list exists, remove it
         if os.path.isfile(file_list_fn):
             print('removing old list')
             os.remove(file_list_fn)
             
-        self.cur_img = 0
-        
-        self.get_img_list()
-        
+        #Set the image index to zero, get the image list from the source dir
+        #and load image 0
+        self.cur_img = 0        
+        self.get_img_list()        
         self.reload_img()
-        
-        
-            
         
     def show_menu_window(self,dummy=None):
         #Init the menu window 
@@ -211,27 +247,28 @@ class App:
         
     def set_keybindings(self,window):
         #Set keybindings for the program controls
-        window.bind('<F11>', self.toggle_fs)
-        window.bind('<F1>', self.reload_img_list)
-        window.bind('<Right>', self.load_next_img)
-        window.bind('<Left>', self.load_prev_img)
-        window.bind('-', self.increase_delay)
-        window.bind('=', self.decrease_delay)
-        window.bind('<Down>', self.rotate_cw)
-        window.bind('<Up>', self.rotate_ccw)
-        window.bind('<Tab>', self.toggle_fit_to_canvas)
-        window.bind("<MouseWheel>",self.zoomer)
-        window.bind("<Control-z>",self.undo)
-        window.bind("<Control-q>",self.quit_app)
-        window.bind("<F12>",self.toggle_rand_order)
-        window.bind("<Escape>",self.quit_app)
-        window.bind("<Control-r>",self.reload_img)
-        window.bind('<Alt-m>',self.toggle_menu)
-        window.bind('<KeyRelease>',self.keyup)
-        window.bind('1',self.set_keep_new_flag)
-        window.bind('2',self.set_keep_existing_flag)
-        window.bind('3',self.set_keep_both_flag)
-        window.bind('<End>',self.close_img_compare_window)
+        window.bind('<F11>', self.toggle_fs)               #toggle full screen
+        window.bind('<F1>', self.reload_img_list)          #Check source for images
+        window.bind('<F2>', self.remove_empty_dirs)        #remove empty directories
+        window.bind('<Right>', self.load_next_img)         #Load the next image
+        window.bind('<Left>', self.load_prev_img)          #Load the previous
+        window.bind('-', self.increase_delay)              #Slow GIF animation
+        window.bind('=', self.decrease_delay)              #Speed GIF animation
+        window.bind('<Down>', self.rotate_cw)              #Rotate the image clockwise
+        window.bind('<Up>', self.rotate_ccw)               #Rotate the image counterclockwise
+        window.bind('<Tab>', self.toggle_fit_to_canvas)    #zoom/shrink to canvas
+        window.bind("<MouseWheel>",self.zoomer)            #mouse wheel to increase/decrease zoom
+        window.bind("<Control-z>",self.undo)               #Undo file move
+        window.bind("<Control-q>",self.quit_app)           #Quit app
+        window.bind("<F12>",self.toggle_rand_order)        #Display images in random order
+        window.bind("<Escape>",self.quit_app)              #Quit app
+        window.bind("<Control-r>",self.reload_img)         #Reset zoom, animation speed etc. to defaults
+        window.bind('<Alt-m>',self.toggle_menu)            #Display controls menu
+        window.bind('<KeyRelease>',self.keyup)             #Monitor key presses (check for file moves)
+        window.bind('1',self.set_keep_new_flag)            #dup processing: keep source_dir file
+        window.bind('2',self.set_keep_existing_flag)       #dup processing: keep dest_dir file
+        window.bind('3',self.set_keep_both_flag)           #dup processing: keep both files
+        window.bind('<End>',self.close_img_compare_window) #Stop comparing dups & cancel move
         
     def set_keep_new_flag(self,dummy=None):
         #Set flag to indicate that the user wants to keep the file from the 
@@ -354,8 +391,14 @@ class App:
             self.move_file()
         
     def quit_app(self,dummy=None):
-        #Write the file list to file
-        self.write_file_list()
+        #Close the image window
+        self.img_window.destroy()
+        #Close the compare window if one exists
+        self.close_img_compare_window()
+        #Write the file list to file if the image list has been updated
+        #from the directory or if files have been moved
+        if (len(self.move_events)>0) or self.img_list_updated:
+            self.write_file_list()
         #If the temp trash directory exists, empty it and remove the temp 
         #directory
         if os.path.isdir(self.trash_dest):
@@ -376,11 +419,9 @@ class App:
             
             
     def gen_menutext(self):
-            
             if self.processing_duplicates:
-                
+                #Menu controls when processing dup image files
                 menu_txt = ''
-                
                 menu_txt += 'Esc ==> Quit\n'
                 menu_txt += 'Alt+M ==> Toggle this menu\n'
                 menu_txt += 'End ==> cancel move\n'
@@ -388,21 +429,21 @@ class App:
                 menu_txt += '2 ==> keep old image and delete new image\n'
                 menu_txt += '3 ==> rename new image and keep both\n'
             else:
-                
+                #Menu during typical operation
+                #program control settings
                 menu_txt = ''
-                
                 menu_txt += 'Esc ==> Quit\n'
                 menu_txt += 'Alt+M ==> Toggle this menu\n'
                 menu_txt += 'Ctrl+Z ==> Undo move\n'
                 menu_txt += 'L/R arrows ==> prev/next image\n'
                 menu_txt += 'U/D arrows ==> +/- GIF animation speed\n'
                 menu_txt += 'F1  ==> reload img list from directory\n'
+                menu_txt += 'F2  ==> Recursively remove empty dirs from source\n'
                 menu_txt += 'F11 ==> toggle full screen\n'
                 menu_txt += 'F12 ==> toggle random display order\n'
                 menu_txt += 'TAB ==> toggle fit to canvas\n'
                 menu_txt += 'Ctrl+R ==> reload image\n'
-                
-                
+                #Build list of destination folders and corresponding keys
                 menu_txt += '\nPress key to move to subdirectory in {}\n'.format(settings.dest_root)
                 for key in settings.move_dict.keys():
                     menu_txt += '   {} ==> {}\n'.format(key,os.path.split(settings.move_dict[key])[1])
@@ -555,6 +596,8 @@ class App:
     def update_img_list(self,file):
         #Remove the moved file from the image list
         self.img_list.remove(file)
+        if self.rand_order:
+            self.cur_img = random.randint(0,len(self.img_list)-1)
         #If the last image was removed, set the image index to the start
         if self.cur_img >= len(self.img_list):
             self.cur_img = 0
@@ -692,111 +735,137 @@ class App:
         self.init_image()
         
     def init_bbox(self):
-        self.bbox = [0,0,self.new_img_width,self.new_img_height]
+        #indicate that bbox exists
+        self.bbox = True
+        #Set the crop box coordinates
         self.crop_bbox = [0,0,self.img_width,self.img_height]
-        self.bbox_ratio_x = self.abs_ratio
-        self.bbox_ratio_y = self.abs_ratio
+        #Set the initial bbox anchor at the upper left of the image
         self.bbox_anchor = [0,0]
+        #Set the bounding box width and height to the image dimensions
+        self.bbox_width = self.new_img_width
+        self.bbox_height = self.new_img_height
         
-        self.bbox_width = self.bbox[2]-self.bbox[0]
-        self.bbox_height = self.bbox[3]-self.bbox[1]
-        
-        
+        #Find the width of the crop box
         self.crop_width = self.crop_bbox[2] - self.crop_bbox[0]
         self.crop_height = self.crop_bbox[3] - self.crop_bbox[1]
         
         
     def update_bbox_pan(self):
+        #Update the viewable area after mouse drag
         
-        
+        #Update the bbox anchor based on how far the mouse was dragged
         self.bbox_anchor[0] -= self.bbox_dx
         self.bbox_anchor[1] -= self.bbox_dy
+        #Reset the mouse drag distances
         self.bbox_dx = 0
         self.bbox_dy = 0
         
+        #Prevent the anchor from being set past the left side of the image
         if self.bbox_anchor[0] < 0:
             self.bbox_anchor[0] = 0
             
+        #Prevent the anchor from being set past the top of the image
         if self.bbox_anchor[1] < 0:
             self.bbox_anchor[1] = 0
             
+        #Prevent the anchor from being set past the right side of the image
         if self.bbox_anchor[0] + self.bbox_width > self.new_img_width:
             self.bbox_anchor[0] = self.new_img_width - self.bbox_width
             
+        #Prevent the anchor from being set past the bottom of the image
         if self.bbox_anchor[1] + self.bbox_height > self.new_img_height:
             self.bbox_anchor[1] = self.new_img_height - self.bbox_height
             
-        
-        crop_bbox_anchor = [
-            self.bbox_anchor[0]*(self.img_width/self.new_img_width),
-            self.bbox_anchor[1]*self.img_height/self.new_img_height]
-        
-        
-        
-        self.crop_bbox[0:2] = crop_bbox_anchor
-        self.crop_bbox[2] = crop_bbox_anchor[0]+self.crop_width
-        self.crop_bbox[3] = crop_bbox_anchor[1]+self.crop_height
-        
-        
-        self.crop_bbox = [int(round(item)) for item in self.crop_bbox]
+        #Update the crop box
+        self.update_crop_box()
         
         
     def update_bbox_zoom(self):
+        #Store the distance between the left edge and top of the canvas before
+        #the zoom.  Needed to find the position of the mouse relative to the
+        #image prior to zoom.
         prev_img_edge = [(self.img_window_width-self.bbox_width)/2,(self.img_window_height-self.bbox_height)/2]
+        #Store the previous width and height of the zoomed image in a list for iterating
         prev_img_wh = [self.new_img_width,self.new_img_height]
+        #Update the width & height of the image & store in a list for iterating
         self.new_img_width = int(self.img_width*self.ratio*self.mux[self.zoomcycle])
         self.new_img_height = int(self.img_height*self.ratio*self.mux[self.zoomcycle])
         cur_img_wh = [self.new_img_width,self.new_img_height]
         
+        #Update the absolute zoom ratio (the starting zoom if image zoomed/shrunk
+        #to fit the canvas times the zoomcycle zoom)
         self.abs_ratio = self.ratio*self.mux[self.zoomcycle]
         
+        #Update the bounding box width and height (the width and height of the
+        #image display area in units of canvas pixels) and stor in a list for 
+        #iterating
         self.bbox_width = min(self.new_img_width,self.img_window_width)
         self.bbox_height = min(self.new_img_height,self.img_window_height)
         cur_bbox_wh = [self.bbox_width,self.bbox_height]
         
+        #Store the position of the mouse in a list for iterating
         cur_mouse_xy = [self.mouse_x,self.mouse_y]
         
+        #Iterate over width and height
         for i in range(2):
+            #Determine the location of the mouse relative to the image before
+            #the zoom occurred
             prev_mouse_pix = (cur_mouse_xy[i]-prev_img_edge[i]+self.bbox_anchor[i])
+            #Move the center of the bounding box to the mouse location
             new_center = prev_mouse_pix*cur_img_wh[i]/prev_img_wh[i]
+            #Update the location of the bounding box anchor relative to the
+            #mouse location
             self.bbox_anchor[i] = new_center-cur_bbox_wh[i]/2
         
-        self.bbox_ratio_x = (self.img_window_width/self.bbox_width)*self.mux[self.zoomcycle]
-        self.bbox_ratio_y = (self.img_window_height/self.bbox_height)*self.mux[self.zoomcycle]
-        
+        #Check that the bounding box does not extend past the edges of the zoomed
+        #image
         if self.bbox_anchor[0] < 0:
             self.bbox_anchor[0] = 0
-            
         if self.bbox_anchor[1] < 0:
             self.bbox_anchor[1] = 0
-            
         if self.bbox_anchor[0] + self.bbox_width > self.new_img_width:
             self.bbox_anchor[0] = self.new_img_width - self.bbox_width
-            
         if self.bbox_anchor[1] + self.bbox_height > self.new_img_height:
             self.bbox_anchor[1] = self.new_img_height - self.bbox_height
+        
+        #Update the crop box
+        self.update_crop_box()
+    
+    def update_crop_box(self):
             
+        #Update the location of the crop box anchor.  This converts the bbox_anchor
+        #from zoomed_image_coordinates to original_image_coordinates based
+        #on the original/zoomed width and height ratios
         crop_bbox_anchor = [
             self.bbox_anchor[0]*(self.img_width/self.new_img_width),
             self.bbox_anchor[1]*self.img_height/self.new_img_height]
         
+        #Calculate the height and width of the crop box
         self.crop_height = self.bbox_height/self.abs_ratio
         self.crop_width = self.bbox_width/self.abs_ratio
         
+        #Set the crop box coordinates
         self.crop_bbox[0:2] = crop_bbox_anchor
         self.crop_bbox[2] = crop_bbox_anchor[0]+self.crop_width
         self.crop_bbox[3] = crop_bbox_anchor[1]+self.crop_height
         
+        #Convert the crop box coordinates to integers
         self.crop_bbox = [int(round(item)) for item in self.crop_bbox]
             
         
     def resize_img(self,frames):
         
-        if self.bbox == None:
+        #If a bounding box does not exist
+        if not self.bbox:
+            #Calculate the zoom ratio required to fit the image to the canvas
             self.ratio = min(self.img_window_width/self.img_width,self.img_window_height/self.img_height)
+            #If the zoom required to fit is more than 200%, set to 200%
             if self.ratio>2:
                 self.ratio=2 
                 
+            #If the image should be fit to the canvas or if the image is larger
+            #than the canvas, calculate new image width/height values.  Otherwise
+            #use the actual image width/height
             if self.fit_to_canvas or self.ratio < 1:
                 self.new_img_width = int(self.img_width*self.ratio*self.mux[self.zoomcycle])
                 self.new_img_height = int(self.img_height*self.ratio*self.mux[self.zoomcycle])
@@ -804,55 +873,70 @@ class App:
                 self.new_img_width = self.img_width
                 self.new_img_height = self.img_height
                 self.ratio = 1
+            #Calculate the absolute zoom ratio and initialize the bounding box
             self.abs_ratio = self.ratio*self.mux[self.zoomcycle]
             self.init_bbox()
         
         for frame in frames:
+            #Make a copy of the frame
             thumbnail = frame.copy()
             
             if self.rotation != 0:
+                #Rotate the image
                 thumbnail = thumbnail.rotate(self.rotation, expand=1, center=None, translate=None)
                 # thumbnail.save('rotate_{}.jpg'.format(self.rotation))
             
             if (self.crop_width<self.img_width) or (self.crop_height<self.img_height):
+                #Crop the image to the coordinates of the crop box
                 thumbnail = thumbnail.crop(self.crop_bbox)
-                
+            
+            #Resize the cropped image to the bounding box width and height
             thumbnail = thumbnail.resize((self.bbox_width,self.bbox_height),Image.LANCZOS)
             # thumbnail.save('thumbnail.jpg')
+            #Return the rotated, cropped, resized image
             yield thumbnail
             
             
     def gen_sequence(self,img_file):
         
         if self.new_image:
+            #Set the rotation to default of zero
             self.rotation = 0
+            #Find the width/height of the raw image file
             (self.img_width, self.img_height) = Image.open(img_file).size
-            self.img_wh_ratio = self.img_width/self.img_height
+            
+            #Open the image file
             self.open_image = Image.open(img_file)
+            #Set the flag to indicate that an image is already loaded (to avoid
+            #unnecessary disk accesses)
             self.new_image = False
-            self.bbox = None
+            #Indicate that a new bounding box is needed
+            self.bbox = False
+        #Extract the raw frames in the image
         img_frames_raw = ImageSequence.Iterator(self.open_image)
         
+        #Rotate/crop/resize the image as necessary
         img_frames = self.resize_img(img_frames_raw)
         
-        
+        #Build the sequence of frames in the image and return the sequence
         sequence = [ImageTk.PhotoImage(img) for img in img_frames]
         
         return sequence
     
     def gen_compare_sequence(self,iterator,w,h):
+        #Generates a sequence to compare two duplicate files
         
-        
+        #Determine the zoom ratio to fit the image to the compare window 
+        #canvas sizes
         ratio = min(self.default_window_width/w,self.default_window_height/h)
         if ratio>2:
             ratio=2 
                 
+        #Calculate the new width/height and resize each frame
         new_w = int(w*ratio)
         new_h = int(h*ratio)
-        
         for frame in iterator:
             thumbnail = frame.copy()
-                
             thumbnail = thumbnail.resize((new_w,new_h),Image.LANCZOS)
             yield thumbnail
         
