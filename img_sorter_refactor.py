@@ -5,6 +5,10 @@ Created on Wed Oct 27 20:09:45 2021
 @author: jmatt
 """
 
+
+from argparse import ArgumentParser
+
+
 import tkinter as tk
 from PIL import Image, ImageTk, ImageSequence, ImageOps
 import os
@@ -23,7 +27,7 @@ from shutil import move
 import imghdr
 
 class App:
-    def __init__(self, parent):
+    def __init__(self, parent,source_dir,dest_root):
         #Init the parent canvas
         self.parent = parent
         self.parent.lift()
@@ -48,12 +52,28 @@ class App:
             self.mux[n] = round(self.mux[n+1] * 0.9, 5)
         
         #Store the source dir from the settings file
-        self.source_dir = settings.source_dir
+        if source_dir == "None":
+            print('using settings source dir')
+            self.source_dir = settings.source_dir
+        else:
+            print('using command line source dir')
+            self.source_dir = source_dir
         
         #Set the temp trash directory and make if it doesn't exist
         self.trash_dest = os.path.join(settings.dest_root,'.temp_trash')
         if not os.path.isdir(self.trash_dest):
             os.makedirs(self.trash_dest)
+            
+        if dest_root == "None":
+            print('using settings dest dir')
+            dest_root = settings.dest_root
+        else:
+            print('using command line dest dir')
+            
+        self.move_dict = settings.move_dict
+            
+        for key in self.move_dict.keys():
+            self.move_dict[key] = os.path.join(dest_root,self.move_dict[key])
         
         #Get the list of images in the source directory
         self.get_img_list()
@@ -193,7 +213,7 @@ class App:
         #Load the image list from file
         file_list_fn = os.path.join(self.source_dir,'.files')
                 
-        with open(file_list_fn,'r') as file:
+        with open(file_list_fn,'r', encoding='utf-8') as file:
             lines = file.readlines()
             
         self.img_list = [line.strip() for line in lines]
@@ -202,7 +222,7 @@ class App:
         #Write the image list to file
         file_list_fn = os.path.join(self.source_dir,'.files')
         
-        with open(file_list_fn,'w') as file:
+        with open(file_list_fn,'w', encoding='utf-8') as file:
             for fn in self.img_list:
                 file.write('{}\n'.format(fn))
                 
@@ -382,11 +402,11 @@ class App:
         #Function to track key releases for moving files
         #Store the key that was released
         key = event.char
-        if (key in settings.move_dict.keys()) and not self.processing_duplicates:
+        if (key in self.move_dict.keys()) and not self.processing_duplicates:
             #Reload the image to reset zoom
             self.reload_img()
             #Store the destination directory based on the key pressed
-            self.dest_dir = settings.move_dict[key]
+            self.dest_dir = self.move_dict[key]
             #If the destination directory doesn't exist, create it
             if not os.path.isdir(self.dest_dir):
                 os.makedirs(self.dest_dir)
@@ -448,7 +468,7 @@ class App:
                 menu_txt += 'Ctrl+R ==> reload image\n'
                 #Build list of destination folders and corresponding keys
                 menu_txt += '\nPress key to move to subdirectory in {}\n'.format(settings.dest_root)
-                for key in settings.move_dict.keys():
+                for key in self.move_dict.keys():
                     menu_txt += '   {} ==> {}\n'.format(key,os.path.split(settings.move_dict[key])[1])
             
             return menu_txt
@@ -1207,12 +1227,44 @@ class App:
         #again
         self.img_compare_window.after(self.delay, lambda: self.animate_compare(new_counter,existing_counter,inputs))
             
-            
-#Init a tkinter application
-root = tk.Tk()
-#Make the root window full screen (reduces blinking when switching between windows
-#but makes it harder to view console outputs)
-# root.attributes('-fullscreen', True)
-#Initialize the application object and start the run
-app = App(root)
-root.mainloop()
+      
+#sample call: 
+    # python main.py -huc8 Winooski_River -huc12_list WIN_0502 -n 2 -reach_type SGA
+
+def main():
+    """Highest-level function. Called by user.
+    
+    sample calls:
+
+    Parameters:
+        None
+
+    Returns:
+        None
+    """
+
+    ### Initialize argument parser
+    parser = ArgumentParser()
+
+    ### Add arguments to parser
+    parser.add_argument('-s_dir', dest='source_dir', default="None")
+    parser.add_argument('-d_dir', dest='dest_root', default="None")
+    args = parser.parse_args()
+    
+    #Pull the source and destination directories from the argument parser
+    source_dir = args.source_dir
+    dest_root = args.dest_root
+
+    #Init a tkinter application
+    root = tk.Tk()
+    #Make the root window full screen (reduces blinking when switching between windows
+    #but makes it harder to view console outputs)
+    # root.attributes('-fullscreen', True)
+    #Initialize the application object and start the run
+    app = App(root,source_dir,dest_root)
+    root.mainloop()
+
+
+
+if __name__ == '__main__':
+    main()
