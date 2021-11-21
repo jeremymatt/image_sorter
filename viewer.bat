@@ -16,6 +16,8 @@ if "%~2"=="" (SET in2=empty) else (SET in2=%2%)
 if "%~3"=="" (SET in3=empty) else (SET in3=%3%)
 if "%~4"=="" (SET in4=empty) else (SET in4=%4%)
 
+if %in1%==-help (set in1=-h)
+
 if %in1%==-h (
 	echo Help file
 	echo      noflags Run with the default settings specified in
