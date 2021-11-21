@@ -1346,7 +1346,7 @@ def main():
     root = tk.Tk()
     #Make the root window full screen (reduces blinking when switching between windows
     #but makes it harder to view console outputs)
-    # root.attributes('-fullscreen', True)
+    root.attributes('-fullscreen', True)
     #Initialize the application object and start the run
     app = App(root,source_dir,dest_root)
     root.mainloop()
