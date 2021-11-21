@@ -271,9 +271,6 @@ class App:
             lines = file.readlines()
             
         self.img_list = [line.strip() for line in lines]
-        t = ['c:\rocks.jpg']
-        t.extend(self.img_list)
-        self.img_list = t
             
     def write_file_list(self):
         #Write the image list to file
