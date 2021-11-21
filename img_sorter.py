@@ -191,7 +191,7 @@ class App:
         
     def get_img_list(self):
         
-        file_list_fn = os.path.join(self.source_dir,'.files')
+        file_list_fn = os.path.join(self.source_dir,'.img_files_list')
         
         #If an image list file exists, load from file, else inspect directories
         #for image files
@@ -225,6 +225,7 @@ class App:
                     #Add subdirectories in the current directory to the directories to check
                     new_dirs = [item for item in os.listdir(cur_dir) if os.path.isdir(os.path.join(cur_dir,item))]
                     dirs_to_process.extend([os.path.join(cur_dir,item) for item in new_dirs])
+            self.img_list.sort()
     
     def remove_empty_dirs(self,dummy = None):
         #Init the number of dirs and removed dirs counters
@@ -264,16 +265,19 @@ class App:
             
     def read_file_list(self):
         #Load the image list from file
-        file_list_fn = os.path.join(self.source_dir,'.files')
+        file_list_fn = os.path.join(self.source_dir,'.img_files_list')
                 
         with open(file_list_fn,'r', encoding='utf-8') as file:
             lines = file.readlines()
             
         self.img_list = [line.strip() for line in lines]
+        t = ['c:\rocks.jpg']
+        t.extend(self.img_list)
+        self.img_list = t
             
     def write_file_list(self):
         #Write the image list to file
-        file_list_fn = os.path.join(self.source_dir,'.files')
+        file_list_fn = os.path.join(self.source_dir,'.img_files_list')
         
         with open(file_list_fn,'w', encoding='utf-8') as file:
             for fn in self.img_list:
@@ -282,7 +286,7 @@ class App:
                 
     def reload_img_list(self,dummy=None):
         #Force check of source directory for image files
-        file_list_fn = os.path.join(self.source_dir,'.files')
+        file_list_fn = os.path.join(self.source_dir,'.img_files_list')
         
         #If a file list exists, remove it
         if os.path.isfile(file_list_fn):
@@ -475,6 +479,10 @@ class App:
             self.close_img_compare_window()
             #Write the file list to file if the image list has been updated
             #from the directory or if files have been moved
+            
+            # if os.path.isfile(os.path.join(dest_root,'.img_files_list')) & (not self.dest_root == self.source_dir):
+            #     os.remove(os.path.join(dest_root,'.img_files_list'))
+            
             if (len(self.move_events)>0) or self.img_list_updated:
                 self.write_file_list()
             #If the temp trash directory exists, empty it and remove the temp 
@@ -604,7 +612,7 @@ class App:
                         #close the compare window
                         self.close_img_compare_window()
                         #Close the PIL image file
-                        self.open_image.close()
+                        self.close_open_image()
                         #Generate the absolute path to the destination
                         dest_file = os.path.join(self.dest_dir,self.dest_fn)
                         #Store the move in the move history
@@ -614,14 +622,14 @@ class App:
                         #Move the file to the destination and update the image
                         #list
                         move(file,dest_file)
-                        self.update_img_list(file)
+                        self.update_img_list(file,dest_file)
                         
                 #User has elected to keep the file in the destination directory        
                 elif self.keep_existing:
                     #Close the compare window
                     self.close_img_compare_window()
                     #Close the PIL image file
-                    self.open_image.close()
+                    self.close_open_image()
                     
                     #Move the file in the source directory to the temporary
                     #trash direcetory
@@ -632,14 +640,14 @@ class App:
                     #list
                     moved_files = [(file,trash_dest_fn)]
                     self.move_events.append((moved_files,cp.deepcopy(self.cur_img),cp.deepcopy(self.img_list)))
-                    self.update_img_list(file)
+                    self.update_img_list(file,trash_dest_fn)
                 
                 #User has elected to keep the file in the source directory
                 elif self.keep_new:
                     #Close the compare window
                     self.close_img_compare_window()
                     #Close the PIL image file
-                    self.open_image.close()
+                    self.close_open_image()
                     
                     #Move the file in the destination directory to the temporary
                     #trash direcetory
@@ -658,7 +666,7 @@ class App:
                     move(file,dest_file)
                     
                     self.move_events.append((moved_files,cp.deepcopy(self.cur_img),cp.deepcopy(self.img_list)))
-                    self.update_img_list(file)
+                    self.update_img_list(file,dest_file)
         else:
             #Move the file in the source directory to the destination
             #directory, store the move history, & update the image
@@ -668,12 +676,15 @@ class App:
             self.move_events.append((moved_files,cp.deepcopy(self.cur_img),cp.deepcopy(self.img_list)))
             
             move(file,dest_file)
-            self.update_img_list(file)
+            self.update_img_list(file,dest_file)
             
             
-    def update_img_list(self,file):
+    def update_img_list(self,file,dest_file):
         #Remove the moved file from the image list
         self.img_list.remove(file)
+        if self.dest_root == self.source_dir:
+            self.img_list.append(dest_file)
+            self.img_list.sort()
         if self.rand_order:
             self.cur_img = random.randint(0,len(self.img_list)-1)
         #If the last image was removed, set the image index to the start
@@ -684,7 +695,7 @@ class App:
         self.new_image = True
         #Close the PIL open image file, reset the zoom cycle and initialize
         #the next image
-        self.open_image.close()
+        self.close_open_image()
         self.reset_zoomcycle()
         self.init_image()
         
@@ -701,7 +712,7 @@ class App:
         #the next image
         self.reset_zoomcycle()
         self.new_image = True
-        self.open_image.close()
+        self.close_open_image()
         self.init_image()
         
     def zoomer(self,event):
@@ -774,7 +785,7 @@ class App:
         self.cur_img = (self.cur_img+step) % len(self.img_list)
         self.new_image = True
         #Close the PIL image file and init the new image
-        self.open_image.close()
+        self.close_open_image()
         self.init_image()
         
     def load_prev_img(self,dummy=None):
@@ -803,8 +814,13 @@ class App:
         #Set the new image flag, close the PIL image file, and init the new 
         #image
         self.new_image = True
-        self.open_image.close()
+        self.close_open_image()
         self.init_image()
+        
+    def close_open_image(self):
+        #If an image file was successfully loaded, close it
+        if not self.new_image:
+            self.open_image.close()
         
     def reload_img(self,dummy=None):
         #Reset the image display parameters and re-display the current image
@@ -976,28 +992,31 @@ class App:
             
             
     def gen_sequence(self,img_file):
-        
-        if self.new_image:
-            #Set the rotation to default of zero
-            self.rotation = 0
-            #Find the width/height of the raw image file
-            (self.img_width, self.img_height) = Image.open(img_file).size
+        #Check if the file exists.  If it doesn't, flag the sequence as false
+        if os.path.isfile(img_file):
+            if self.new_image:
+                #Set the rotation to default of zero
+                self.rotation = 0
+                #Find the width/height of the raw image file
+                (self.img_width, self.img_height) = Image.open(img_file).size
+                
+                #Open the image file
+                self.open_image = Image.open(img_file)
+                #Set the flag to indicate that an image is already loaded (to avoid
+                #unnecessary disk accesses)
+                self.new_image = False
+                #Indicate that a new bounding box is needed
+                self.bbox = False
+            #Extract the raw frames in the image
+            img_frames_raw = ImageSequence.Iterator(self.open_image)
             
-            #Open the image file
-            self.open_image = Image.open(img_file)
-            #Set the flag to indicate that an image is already loaded (to avoid
-            #unnecessary disk accesses)
-            self.new_image = False
-            #Indicate that a new bounding box is needed
-            self.bbox = False
-        #Extract the raw frames in the image
-        img_frames_raw = ImageSequence.Iterator(self.open_image)
-        
-        #Rotate/crop/resize the image as necessary
-        img_frames = self.resize_img(img_frames_raw)
-        
-        #Build the sequence of frames in the image and return the sequence
-        sequence = [ImageTk.PhotoImage(img) for img in img_frames]
+            #Rotate/crop/resize the image as necessary
+            img_frames = self.resize_img(img_frames_raw)
+            
+            #Build the sequence of frames in the image and return the sequence
+            sequence = [ImageTk.PhotoImage(img) for img in img_frames]
+        else:
+            sequence = False
         
         return sequence
     
@@ -1196,10 +1215,23 @@ class App:
         self.img_window.configure(background='black')
         self.canvas = tk.Canvas(self.img_window,height=self.img_window_height,width=self.img_window_width, bg='black', highlightthickness=0)
         self.canvas.pack()
-        
+                
         #If there are no images, inform the user
         if sequence == None:
             error_text = 'No images in the \ncurrently loaded list of images\n\nPress F1 to re-check \nthe source directory'
+            text_item = self.canvas.create_text(
+                int(self.img_window_width/2),
+                int(self.img_window_height/2),
+                fill='lightblue',
+                font='times 20 bold',
+                text=error_text,
+                tag='error_txt')
+            self.canvas.tag_raise(text_item)
+            self.canvas.update()
+            self.canvas.tag_raise(text_item)
+        #If the current file doesn't exist, inform the user
+        elif sequence == False:
+            error_text = 'Image does not exist\n\nPress F1 to re-check \nthe source directory'
             text_item = self.canvas.create_text(
                 int(self.img_window_width/2),
                 int(self.img_window_height/2),
@@ -1314,7 +1346,7 @@ def main():
     root = tk.Tk()
     #Make the root window full screen (reduces blinking when switching between windows
     #but makes it harder to view console outputs)
-    root.attributes('-fullscreen', True)
+    # root.attributes('-fullscreen', True)
     #Initialize the application object and start the run
     app = App(root,source_dir,dest_root)
     root.mainloop()
