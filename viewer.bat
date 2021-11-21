@@ -58,6 +58,6 @@ set s_dir=%s_dir:'=%
 
 :: Run the image sorter script.  %~dp0 is the absolute path to the directory
 :: containing the batch file
-if %in1% NEQ -h (call python %~dp0img_sorter_refactor.py -s_dir "%s_dir%" -d_dir "%d_dir%")
+if %in1% NEQ -h (call python %~dp0img_sorter.py -s_dir "%s_dir%" -d_dir "%d_dir%")
 ::echo current dir is4: %CD%
 
