@@ -51,30 +51,38 @@ class App:
         for n in range(-1, self.MIN_ZOOM-1, -1):
             self.mux[n] = round(self.mux[n+1] * 0.9, 5)
         
-        #Store the source dir from the settings file
         if source_dir == "None":
-            print('using settings source dir')
+            #Use the default source directory from the settings file
             self.source_dir = settings.source_dir
         else:
-            print('using command line source dir')
+            #Use the user-supplied source directory
             self.source_dir = source_dir
         
         #Set the temp trash directory and make if it doesn't exist
         self.trash_dest = os.path.join(settings.dest_root,'.temp_trash')
         if not os.path.isdir(self.trash_dest):
             os.makedirs(self.trash_dest)
-            
-        if dest_root == "None":
-            print('using settings dest dir')
-            dest_root = settings.dest_root
-        else:
-            print('using command line dest dir')
-            
-        self.move_dict = settings.move_dict
-            
-        for key in self.move_dict.keys():
-            self.move_dict[key] = os.path.join(dest_root,self.move_dict[key])
         
+        if dest_root == "None":
+            #Use destination root specified in the settings file
+            self.dest_root = settings.dest_root
+        else:
+            #Use user-supplied destination direectory
+            self.dest_root = dest_root
+            
+        #Extract the keystroke dictionary from settings and prepend the destination
+        #root to each path
+        self.move_dict = settings.move_dict
+        for key in self.move_dict.keys():
+            self.move_dict[key] = os.path.join(self.dest_root,self.move_dict[key])
+        
+        #Flag to indicate that image display hasn't started yet
+        self.displaying_images = False
+        #Show the settings window so user knows where files are being viewed
+        #from and moved to
+        self.show_settings_window()
+        
+    def generate_settings(self):
         #Get the list of images in the source directory
         self.get_img_list()
         
@@ -118,10 +126,55 @@ class App:
         
         #Reset zoom and bounding box settings
         self.reset_zoomcycle()
-        # set the parent keybindings
-        self.set_keybindings(self.parent)
-        #Initialize the first image of the run
-        self.init_first_image()
+        
+    def continue_run(self,event):
+        key = event.char
+        if key in 'abcdefghijklmnopqrstuvwxyz1234567890':
+            self.settings_window.destroy()
+            self.parent.focus_force()
+            # set the parent keybindings
+            self.set_keybindings(self.parent)
+            #Initialize the starting settings
+            self.generate_settings()
+            #Flag to indicate that the program has continued
+            self.displaying_images = True
+            #Initialize the first image of the run
+            self.init_first_image()
+        
+        
+    def show_settings_window(self,dummy=None):
+        #Init the menu window 
+        self.settings_window = tk.Toplevel(self.parent)
+        self.settings_window.bind("<Control-q>",self.quit_app)           #Quit app
+        self.settings_window.bind("<Escape>",self.quit_app)              #Quit app
+        self.settings_window.bind('<KeyRelease>',self.continue_run)      #Monitor key presses (check for file moves)
+        #Add a canvas
+        canvas = tk.Canvas(self.settings_window,height=1000,width=500)
+        canvas.pack()
+        #Get the text for the menu
+        menu_txt = ''
+        menu_txt += '    Read files from: {}\n'.format(self.source_dir)
+        menu_txt += 'Move files files to: {}\n'.format(self.dest_root)
+        menu_txt += '\nAny letter/number key ==> continue\nCtrl+Q ==> quit\nEsc ==> quit'
+        #Create a text item of the menu text
+        text_item = canvas.create_text(
+            25,
+            25,
+            fill='black',
+            font='times 10 bold',
+            text=menu_txt,tag='menu_txt',
+            anchor=tk.NW)
+        #Make a bounding box around the text to determine required window size
+        bbox = canvas.bbox(text_item)
+        dim = (bbox[2]-bbox[0]+100,bbox[3]-bbox[1]+100)
+        #Set the window geometry to the dimensions of the bounding box plus 
+        #some padding and move the text item to the center of the window
+        locn = [int(self.screen_width/2-dim[0]/2),int(self.screen_height/2-dim[1]/2)]
+        self.settings_window.geometry(f'{dim[0]}x{dim[1]}+{locn[0]}+{locn[1]}')
+        canvas.move(text_item,25,25)
+        canvas.update()
+        canvas.tag_raise(text_item)
+        self.settings_window.focus_force()
         
     def reset_zoomcycle(self):
         #Set the gif frame rate to default
@@ -262,8 +315,9 @@ class App:
         bbox = canvas.bbox(text_item)
         dim = (bbox[2]-bbox[0]+100,bbox[3]-bbox[1]+100)
         #Set the window geometry to the dimensions of the bounding box plus 
-        #some padding and move the text item to the upper left of the window
-        self.menu_window.geometry(f'{dim[0]}x{dim[1]}+0+0')
+        #some padding and move the text item to the center of the window
+        locn = [int(self.screen_width/2-dim[0]/2),int(self.screen_height/2-dim[1]/2)]
+        self.menu_window.geometry(f'{dim[0]}x{dim[1]}+{locn[0]}+{locn[1]}')
         canvas.move(text_item,25,25)
         canvas.update()
         canvas.tag_raise(text_item)
@@ -283,8 +337,8 @@ class App:
         window.bind("<MouseWheel>",self.zoomer)            #mouse wheel to increase/decrease zoom
         window.bind("<Control-z>",self.undo)               #Undo file move
         window.bind("<Control-q>",self.quit_app)           #Quit app
-        window.bind("<F12>",self.toggle_rand_order)        #Display images in random order
         window.bind("<Escape>",self.quit_app)              #Quit app
+        window.bind("<F12>",self.toggle_rand_order)        #Display images in random order
         window.bind("<Control-r>",self.reload_img)         #Reset zoom, animation speed etc. to defaults
         window.bind('<Alt-m>',self.toggle_menu)            #Display controls menu
         window.bind('<KeyRelease>',self.keyup)             #Monitor key presses (check for file moves)
@@ -414,21 +468,22 @@ class App:
             self.move_file()
         
     def quit_app(self,dummy=None):
-        #Close the image window
-        self.img_window.destroy()
-        #Close the compare window if one exists
-        self.close_img_compare_window()
-        #Write the file list to file if the image list has been updated
-        #from the directory or if files have been moved
-        if (len(self.move_events)>0) or self.img_list_updated:
-            self.write_file_list()
-        #If the temp trash directory exists, empty it and remove the temp 
-        #directory
-        if os.path.isdir(self.trash_dest):
-            files = [os.path.join(self.trash_dest,file) for file in os.listdir(self.trash_dest)]
-            for file in files:
-                os.remove(file)
-            os.rmdir(self.trash_dest)
+        if self.displaying_images:
+            #Close the image window
+            self.img_window.destroy()
+            #Close the compare window if one exists
+            self.close_img_compare_window()
+            #Write the file list to file if the image list has been updated
+            #from the directory or if files have been moved
+            if (len(self.move_events)>0) or self.img_list_updated:
+                self.write_file_list()
+            #If the temp trash directory exists, empty it and remove the temp 
+            #directory
+            if os.path.isdir(self.trash_dest):
+                files = [os.path.join(self.trash_dest,file) for file in os.listdir(self.trash_dest)]
+                for file in files:
+                    os.remove(file)
+                os.rmdir(self.trash_dest)
         #Destroy the application
         self.parent.destroy()
         
