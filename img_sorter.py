@@ -387,8 +387,8 @@ class App:
         window.bind('<Left>', self.load_prev_img)          #Load the previous
         window.bind('-', self.increase_delay)              #Slow GIF animation
         window.bind('=', self.decrease_delay)              #Speed GIF animation
-        window.bind('<Down>', self.rotate_cw)              #Rotate the image clockwise
-        window.bind('<Up>', self.rotate_ccw)               #Rotate the image counterclockwise
+        window.bind('<Down>', self.rotate_ccw)              #Rotate the image clockwise
+        window.bind('<Up>', self.rotate_cw)               #Rotate the image counterclockwise
         window.bind('<Tab>', self.toggle_fit_to_canvas)    #zoom/shrink to canvas
         window.bind("<MouseWheel>",self.zoomer)            #mouse wheel to increase/decrease zoom
         window.bind("<Control-z>",self.undo)               #Undo file move
