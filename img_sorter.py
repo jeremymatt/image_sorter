@@ -402,7 +402,10 @@ class App:
         window.bind('2',self.set_keep_existing_flag)       #dup processing: keep dest_dir file
         window.bind('3',self.set_keep_both_flag)           #dup processing: keep both files
         window.bind('<End>',self.close_img_compare_window) #Stop comparing dups & cancel move
-        window.bind('<Return>',self.close_txt_window)       #Close text window if one is open
+        window.bind('<Return>',self.close_txt_window)      #Close text window if one is open
+        window.bind('<Motion>',self.motion)                #Track mouse motion
+        window.bind('<ButtonPress-1>',self.move_from)      #Store location of start of pan  
+        window.bind('<ButtonRelease-1>',self.move_to)      #Store location of end of pan 
         
     def set_keep_new_flag(self,dummy=None):
         #Set flag to indicate that the user wants to keep the file from the 
@@ -483,6 +486,7 @@ class App:
     def motion(self,event):
         #Track motion of the mouse
         self.mouse_x,self.mouse_y = event.x,event.y
+        # print('mouse motion ==> x:{} y:{}'.format(self.mouse_x,self.mouse_y))
         
     def move_from(self,event):
         #Store starting point of image pan

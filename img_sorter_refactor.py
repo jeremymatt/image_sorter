@@ -83,8 +83,6 @@ class App:
         self.show_settings_window()
         
     def generate_settings(self):
-        #Get the list of images in the source directory
-        self.get_img_list()
         
         #Init the history list of previously viewed images for random view order
         self.previous_images = []
@@ -103,12 +101,14 @@ class App:
         self.default_window_height= 500
         #flag to indicate that there is no open image window
         self.img_window = None
+        self.has_open_image=False
         #flag to indicate that a compare window is open
         self.has_compare_window = False
         #Init a list of file move events for undo purposes
         self.move_events = []
         #Flag to show the menu window
         self.show_menu = False
+        self.open_text_window = False
         #Set flags to control duplicate file handling
         self.keep_both = False
         self.keep_new = False
@@ -126,6 +126,8 @@ class App:
         
         #Reset zoom and bounding box settings
         self.reset_zoomcycle()
+        #Get the list of images in the source directory
+        self.get_img_list()
         
     def continue_run(self,event):
         key = event.char
@@ -138,8 +140,6 @@ class App:
             self.generate_settings()
             #Flag to indicate that the program has continued
             self.displaying_images = True
-            #Initialize the first image of the run
-            self.init_first_image()
         
         
     def show_settings_window(self,dummy=None):
@@ -189,6 +189,47 @@ class App:
         self.bbox_anchor = [0,0]
         self.bbox = False
         
+    def close_txt_window(self,dummy=None):
+        #If a text window is open, close it and reload the image to bring
+        #it back to focus
+        if self.open_text_window:
+            self.open_text_window = False
+            self.txt_window.destroy()
+            self.reload_img()
+        
+    def show_text_window(self,txt):
+        if not self.open_text_window:
+            self.open_text_window = True
+            #Init the menu window 
+            self.txt_window = tk.Toplevel(self.parent)
+            
+            self.set_keybindings(self.txt_window)
+        
+            #Add a canvas
+            self.txt_canvas = tk.Canvas(self.txt_window,height=1000,width=500)
+            self.txt_canvas.pack()
+        else:
+            self.txt_canvas.delete(self.text_item)
+        #Create a text item of the menu text
+        self.text_item = self.txt_canvas.create_text(
+            25,
+            25,
+            fill='black',
+            font='times 10 bold',
+            text=txt,tag='menu_txt',
+            anchor=tk.NW)
+        #Make a bounding box around the text to determine required window size
+        bbox = self.txt_canvas.bbox(self.text_item)
+        dim = (bbox[2]-bbox[0]+100,bbox[3]-bbox[1]+100)
+        #Set the window geometry to the dimensions of the bounding box plus 
+        #some padding and move the text item to the center of the window
+        locn = [int(self.screen_width/2-dim[0]/2),int(self.screen_height/2-dim[1]/2)]
+        self.txt_window.geometry(f'{dim[0]}x{dim[1]}+{locn[0]}+{locn[1]}')
+        self.txt_canvas.move(self.text_item,25,25)
+        self.txt_canvas.update()
+        # self.txt_canvas.tag_raise(self.text_item)
+        self.txt_window.focus_force()
+        
     def get_img_list(self):
         
         file_list_fn = os.path.join(self.source_dir,'.img_files_list')
@@ -207,10 +248,16 @@ class App:
             
             dirs_to_process = [self.source_dir]
             self.img_list = []
+            ctr = 0
             while len(dirs_to_process)>0:
-                print('{} files, {} dirs to process'.format(len(self.img_list),len(dirs_to_process)))
                 #Pop directory from list to process
                 cur_dir = dirs_to_process.pop()
+                        
+                #Display progress
+                ctr +=1
+                txt = '{} dirs checked ({} dirs remaining).  Found {} images'.format(ctr,len(dirs_to_process),len(self.img_list))
+                self.show_text_window('Searching for images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+                # print('{} files, {} dirs to process'.format(len(self.img_list),len(dirs_to_process)))
                 #list of all files in the directory
                 new_files = [file for file in os.listdir(cur_dir) if os.path.isfile(os.path.join(cur_dir,file))]
                 #Add absolute path to the file names
@@ -225,7 +272,16 @@ class App:
                     #Add subdirectories in the current directory to the directories to check
                     new_dirs = [item for item in os.listdir(cur_dir) if os.path.isdir(os.path.join(cur_dir,item))]
                     dirs_to_process.extend([os.path.join(cur_dir,item) for item in new_dirs])
+            
+            self.show_text_window('COMPLETED\nSearching for images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+            
             self.img_list.sort()
+        
+        if self.has_open_image:
+            self.close_open_image()
+            self.init_image()
+        else:
+            self.init_first_image()
     
     def remove_empty_dirs(self,dummy = None):
         #Init the number of dirs and removed dirs counters
@@ -233,14 +289,14 @@ class App:
         self.num_removed = 0
         #Call recursive rmdirs function on source dirs
         self.rmdirs(self.source_dir)
-        print("\r", end="")
-        print('\nDone removing empty directories')
+        self.show_text_window('COMPLETED\nRemoving empty directories from:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,self.display_txt))
+       
                     
     def rmdirs(self,cur_dir):  
-        #Print the state
-        if self.num_dirs > 1:
-            print("\r", end="")
-        print('{} dirs checked, {} dirs removed'.format(self.num_dirs,self.num_removed), end="")
+        #Display progress
+        self.display_txt = '{} checked, {} removed'.format(self.num_dirs,self.num_removed)
+        self.show_text_window('Removing empty directories from:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,self.display_txt))
+       
         #List the items in the directory
         dir_list = os.listdir(cur_dir)
         #Store the files and subdirectories in separate lists
@@ -293,8 +349,7 @@ class App:
         #Set the image index to zero, get the image list from the source dir
         #and load image 0
         self.cur_img = 0        
-        self.get_img_list()        
-        self.reload_img()
+        self.get_img_list()
         
     def show_menu_window(self,dummy=None):
         #Init the menu window 
@@ -347,6 +402,10 @@ class App:
         window.bind('2',self.set_keep_existing_flag)       #dup processing: keep dest_dir file
         window.bind('3',self.set_keep_both_flag)           #dup processing: keep both files
         window.bind('<End>',self.close_img_compare_window) #Stop comparing dups & cancel move
+        window.bind('<Return>',self.close_txt_window)      #Close text window if one is open
+        window.bind('<Motion>',self.motion)                #Track mouse motion
+        window.bind('<ButtonPress-1>',self.move_from)      #Store location of start of pan  
+        window.bind('<ButtonRelease-1>',self.move_to)      #Store location of end of pan 
         
     def set_keep_new_flag(self,dummy=None):
         #Set flag to indicate that the user wants to keep the file from the 
@@ -427,6 +486,7 @@ class App:
     def motion(self,event):
         #Track motion of the mouse
         self.mouse_x,self.mouse_y = event.x,event.y
+        # print('mouse motion ==> x:{} y:{}'.format(self.mouse_x,self.mouse_y))
         
     def move_from(self,event):
         #Store starting point of image pan
@@ -816,7 +876,10 @@ class App:
         
     def close_open_image(self):
         #If an image file was successfully loaded, close it
-        if not self.new_image:
+        if self.has_open_image:
+            self.has_open_image = False
+            self.new_image = True
+            self.img_window.destroy()
             self.open_image.close()
         
     def reload_img(self,dummy=None):
@@ -992,6 +1055,7 @@ class App:
         #Check if the file exists.  If it doesn't, flag the sequence as false
         if os.path.isfile(img_file):
             if self.new_image:
+                self.has_open_image=True
                 #Set the rotation to default of zero
                 self.rotation = 0
                 #Find the width/height of the raw image file
@@ -1194,6 +1258,10 @@ class App:
         
         self.parent.focus_force()
         self.img_window.lift()
+        
+        if self.open_text_window:
+            self.txt_window.lift()
+            self.txt_window.focus_force()
         
         #If there is a compare window, lift that to the top
         if self.has_compare_window:
