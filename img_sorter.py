@@ -140,8 +140,6 @@ class App:
             self.generate_settings()
             #Flag to indicate that the program has continued
             self.displaying_images = True
-            #Initialize the first image of the run
-            self.init_first_image()
         
         
     def show_settings_window(self,dummy=None):
