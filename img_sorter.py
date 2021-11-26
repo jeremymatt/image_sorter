@@ -17,6 +17,7 @@ import random
 import inspect
 import hashlib
 import time
+import pickle as pkl
 
 
 try:
@@ -116,11 +117,25 @@ class App:
         self.keep_new = False
         self.keep_existing = False
         self.processing_duplicates = False
-        #set flag for reviewing duplicate hash values and init empty variables
+        #set flag for reviewing duplicate hash values
         self.reviewing_dup_hashes = False
-        self.hash_dict = None
-        self.dup_hashes = None
-        self.hash_ctr = None
+        
+        #Load saved hashes if available.  Otherwise init empty variables
+        #as flags and to avoid errors when saving state for undo
+        if os.path.isfile(os.path.join(self.source_dir,'.pickled_hashes')):
+            print('\n\nLoading Pickled hashes')
+            with open(os.path.join(self.source_dir,'.pickled_hashes'), 'rb') as file:
+                self.hash_dict = pkl.load(file)
+                self.dup_hashes = pkl.load(file)
+            print('Done loading pickled hashes\n\n')
+            self.hash_ctr = 0
+        else:
+            self.hash_dict = None
+            self.dup_hashes = None
+            self.hash_ctr = None
+            
+        #Init empty backup list/index variables to avoid error when saving state
+        #for undo
         self.img_list_bkup = None
         self.cur_img_bkup = None
         #Load the full screen setting from the settings files
@@ -648,26 +663,36 @@ class App:
             self.move_file()
         
     def quit_app(self,dummy=None):
-        #If reviewing dup hashes, toggle that off to avoid overwriting the saved
-        #image list
-        if self.reviewing_dup_hashes:
-            self.toggle_review_dup_hashes()
+        
+        
         if self.displaying_images:
             #Close the image window
             self.img_window.destroy()
             #Close the compare window if one exists
             self.close_img_compare_window()
-            #Write the file list to file if the image list has been updated
-            #from the directory or if files have been moved
-            if (len(self.move_events)>0) or self.img_list_updated:
-                self.write_file_list()
-            #If the temp trash directory exists, empty it and remove the temp 
-            #directory
-            if os.path.isdir(self.trash_dest):
-                files = [os.path.join(self.trash_dest,file) for file in os.listdir(self.trash_dest)]
-                for file in files:
-                    os.remove(file)
-                os.rmdir(self.trash_dest)
+            
+        #If reviewing dup hashes, toggle that off to avoid overwriting the saved
+        #image list
+        if self.reviewing_dup_hashes:
+            self.toggle_review_dup_hashes()
+        #Write the file list to file if the image list has been updated
+        #from the directory or if files have been moved
+        if (len(self.move_events)>0) or self.img_list_updated:
+            self.write_file_list()
+        #If the temp trash directory exists, empty it and remove the temp 
+        #directory
+        if os.path.isdir(self.trash_dest):
+            files = [os.path.join(self.trash_dest,file) for file in os.listdir(self.trash_dest)]
+            for file in files:
+                os.remove(file)
+            os.rmdir(self.trash_dest)
+                
+        #If a hash dict has been generated, save it to disk
+        if self.hash_dict != None:
+            with open(os.path.join(self.source_dir,'.pickled_hashes'), 'wb') as file:
+                pkl.dump(self.hash_dict,file)
+                pkl.dump(self.dup_hashes,file)
+                
         #Destroy the application
         self.parent.destroy()
         
