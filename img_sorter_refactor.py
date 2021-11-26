@@ -15,6 +15,9 @@ import os
 import copy as cp
 import random
 import inspect
+import hashlib
+import time
+import pickle as pkl
 
 
 try:
@@ -114,6 +117,27 @@ class App:
         self.keep_new = False
         self.keep_existing = False
         self.processing_duplicates = False
+        #set flag for reviewing duplicate hash values
+        self.reviewing_dup_hashes = False
+        
+        #Load saved hashes if available.  Otherwise init empty variables
+        #as flags and to avoid errors when saving state for undo
+        if os.path.isfile(os.path.join(self.source_dir,'.pickled_hashes')):
+            print('\n\nLoading Pickled hashes')
+            with open(os.path.join(self.source_dir,'.pickled_hashes'), 'rb') as file:
+                self.hash_dict = pkl.load(file)
+                self.dup_hashes = pkl.load(file)
+            print('Done loading pickled hashes\n\n')
+            self.hash_ctr = 0
+        else:
+            self.hash_dict = None
+            self.dup_hashes = None
+            self.hash_ctr = None
+            
+        #Init empty backup list/index variables to avoid error when saving state
+        #for undo
+        self.img_list_bkup = None
+        self.cur_img_bkup = None
         #Load the full screen setting from the settings files
         self.full_screen = settings.start_fullscreen
         #Init the window dimensions 
@@ -383,12 +407,16 @@ class App:
         window.bind('<F11>', self.toggle_fs)               #toggle full screen
         window.bind('<F1>', self.reload_img_list)          #Check source for images
         window.bind('<F2>', self.remove_empty_dirs)        #remove empty directories
+        window.bind('<F3>', self.check_file_hashes)        #check source dir for duplicate hashes
+        window.bind('<F4>', self.toggle_review_dup_hashes) #Toggle reviewing lists of images with dup hashes
+        window.bind('<Next>', self.next_dup_hash)          #Next list of dup hashes
+        window.bind('<Prior>', self.prev_dup_hash)         #Previous list of dup hashes
         window.bind('<Right>', self.load_next_img)         #Load the next image
         window.bind('<Left>', self.load_prev_img)          #Load the previous
         window.bind('-', self.increase_delay)              #Slow GIF animation
         window.bind('=', self.decrease_delay)              #Speed GIF animation
-        window.bind('<Down>', self.rotate_ccw)              #Rotate the image clockwise
-        window.bind('<Up>', self.rotate_cw)               #Rotate the image counterclockwise
+        window.bind('<Down>', self.rotate_ccw)             #Rotate the image clockwise
+        window.bind('<Up>', self.rotate_cw)                #Rotate the image counterclockwise
         window.bind('<Tab>', self.toggle_fit_to_canvas)    #zoom/shrink to canvas
         window.bind("<MouseWheel>",self.zoomer)            #mouse wheel to increase/decrease zoom
         window.bind("<Control-z>",self.undo)               #Undo file move
@@ -406,6 +434,112 @@ class App:
         window.bind('<Motion>',self.motion)                #Track mouse motion
         window.bind('<ButtonPress-1>',self.move_from)      #Store location of start of pan  
         window.bind('<ButtonRelease-1>',self.move_to)      #Store location of end of pan 
+        
+    def check_file_hashes(self,dummy=None):
+        #Init the hash dict and list of dup hashes
+        self.hash_dict = {}
+        self.dup_hashes = set()
+        #Record the start time
+        start_time = time.time()
+        for ctr,file in enumerate(self.img_list):
+            #Check how much time has elapsed
+            delta_time = time.time()-start_time
+            if (delta_time>0) & (ctr > 0):
+                #Calculate the remaining time & convert to a string
+                items_per_sec = ctr/delta_time
+                remaining_sec = (len(self.img_list)-ctr)/items_per_sec
+                time_remaining = time.strftime('%H:%M:%S',time.gmtime(remaining_sec))
+            else:
+                #Placeholder for the first iteration
+                time_remaining = '---'
+            
+            #Build the text display string and show the text window to update
+            #the user
+            txt = 'Checked {}/{} ({} remaining)'.format(ctr,len(self.img_list),time_remaining)
+            self.show_text_window('Checking file hashes for images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+            #Calculate the hash of the current file
+            hsh = hashlib.md5(open(file,'rb').read()).hexdigest()
+            if hsh in self.hash_dict.keys():
+                #Add the current hash the duplicate hashes set and add the file
+                #path to the hash dict
+                self.dup_hashes.add(hsh)
+                self.hash_dict[hsh].append(file)
+            else:
+                #Add the current file to the hash dict
+                self.hash_dict[hsh] = [file]
+        
+        #Convert the duplicate hash set to a list and update the text window
+        self.dup_hashes = list(self.dup_hashes)
+        txt = 'Checked {} images, found {} duplicate hashes'.format(len(self.img_list),len(self.dup_hashes))
+        self.show_text_window('COMPLETED:\nChecking file hashes for images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+        
+        
+    def toggle_review_dup_hashes(self,dummy=None):
+        if self.reviewing_dup_hashes:
+            #Toggle the reviewing duplicate hash flag
+            self.reviewing_dup_hashes = False
+            #Restore the global image list and index from memory and load the image
+            self.img_list = self.img_list_bkup
+            self.cur_img = self.cur_img_bkup
+            self.load_new_image()
+        else:
+            #If a hash dict has been generated
+            if self.hash_dict != None:
+                #Toggle the reviewing duplicate hash flag
+                self.reviewing_dup_hashes = True
+                #Back up the global image list and index
+                self.img_list_bkup = self.img_list
+                self.cur_img_bkup = self.cur_img
+                #Set the index to the first duplicate hash
+                self.hash_ctr = 0
+                #Load the list of duplicate images and index to the first one
+                self.img_list = self.hash_dict[self.dup_hashes[self.hash_ctr]]
+                self.cur_img = 0
+                #Load the image
+                self.load_new_image()
+                
+    def next_dup_hash(self,increment=True):
+        if self.reviewing_dup_hashes:
+            if len(self.dup_hashes) == 0:
+                #No duplicate hashes remain, stop reviewing hashes
+                self.toggle_review_dup_hashes()
+            else:
+                if increment == "no-increment":
+                    #The current hash has been removed, ensure the hash index
+                    #isn't greater than the max dup hash index but don't 
+                    #increment
+                    self.hash_ctr = (self.hash_ctr)%len(self.dup_hashes)
+                else:
+                    #Increment the hash counter & check it's not greater than
+                    #the max index
+                    self.hash_ctr = (self.hash_ctr+1)%len(self.dup_hashes)
+                #Load the new duplicate hash image list, index to the first
+                #image, and load it
+                self.img_list = self.hash_dict[self.dup_hashes[self.hash_ctr]]
+                self.cur_img = 0
+                self.load_new_image()
+            
+    def prev_dup_hash(self,dummy=None):
+        if self.reviewing_dup_hashes:
+            #Decrement the hash counter & make sure it's valid
+            self.hash_ctr -= 1
+            if self.hash_ctr<0:
+                self.hash_ctr = len(self.dup_hashes)-1
+            #Load the new duplicate hash image list, index to the first
+            #image, and load it
+            self.img_list = self.hash_dict[self.dup_hashes[self.hash_ctr]]
+            self.cur_img = 0
+            self.load_new_image()
+            
+    def load_new_image(self):
+        #Set the new image flag
+        self.new_image = True
+        #Close the PIL open image file, reset the zoom cycle and initialize
+        #the next image
+        self.close_open_image()
+        self.reset_zoomcycle()
+        self.init_image()
+            
         
     def set_keep_new_flag(self,dummy=None):
         #Set flag to indicate that the user wants to keep the file from the 
@@ -529,26 +663,36 @@ class App:
             self.move_file()
         
     def quit_app(self,dummy=None):
+        
+        
         if self.displaying_images:
             #Close the image window
             self.img_window.destroy()
             #Close the compare window if one exists
             self.close_img_compare_window()
-            #Write the file list to file if the image list has been updated
-            #from the directory or if files have been moved
             
-            # if os.path.isfile(os.path.join(dest_root,'.img_files_list')) & (not self.dest_root == self.source_dir):
-            #     os.remove(os.path.join(dest_root,'.img_files_list'))
-            
-            if (len(self.move_events)>0) or self.img_list_updated:
-                self.write_file_list()
-            #If the temp trash directory exists, empty it and remove the temp 
-            #directory
-            if os.path.isdir(self.trash_dest):
-                files = [os.path.join(self.trash_dest,file) for file in os.listdir(self.trash_dest)]
-                for file in files:
-                    os.remove(file)
-                os.rmdir(self.trash_dest)
+        #If reviewing dup hashes, toggle that off to avoid overwriting the saved
+        #image list
+        if self.reviewing_dup_hashes:
+            self.toggle_review_dup_hashes()
+        #Write the file list to file if the image list has been updated
+        #from the directory or if files have been moved
+        if (len(self.move_events)>0) or self.img_list_updated:
+            self.write_file_list()
+        #If the temp trash directory exists, empty it and remove the temp 
+        #directory
+        if os.path.isdir(self.trash_dest):
+            files = [os.path.join(self.trash_dest,file) for file in os.listdir(self.trash_dest)]
+            for file in files:
+                os.remove(file)
+            os.rmdir(self.trash_dest)
+                
+        #If a hash dict has been generated, save it to disk
+        if self.hash_dict != None:
+            with open(os.path.join(self.source_dir,'.pickled_hashes'), 'wb') as file:
+                pkl.dump(self.hash_dict,file)
+                pkl.dump(self.dup_hashes,file)
+                
         #Destroy the application
         self.parent.destroy()
         
@@ -674,12 +818,10 @@ class App:
                         dest_file = os.path.join(self.dest_dir,self.dest_fn)
                         #Store the move in the move history
                         moved_files = [(file,dest_file)]
-                        self.move_events.append((moved_files,cp.deepcopy(self.cur_img),cp.deepcopy(self.img_list)))
-                        
                         #Move the file to the destination and update the image
                         #list
                         move(file,dest_file)
-                        self.update_img_list(file,dest_file)
+                        self.update_img_list(moved_files,file,dest_file)
                         
                 #User has elected to keep the file in the destination directory        
                 elif self.keep_existing:
@@ -696,8 +838,8 @@ class App:
                     #Store the move in the move history & update the image
                     #list
                     moved_files = [(file,trash_dest_fn)]
-                    self.move_events.append((moved_files,cp.deepcopy(self.cur_img),cp.deepcopy(self.img_list)))
-                    self.update_img_list(file,trash_dest_fn)
+                    
+                    self.update_img_list(moved_files,file,trash_dest_fn)
                 
                 #User has elected to keep the file in the source directory
                 elif self.keep_new:
@@ -722,21 +864,31 @@ class App:
                     moved_files.append((file,dest_file))
                     move(file,dest_file)
                     
-                    self.move_events.append((moved_files,cp.deepcopy(self.cur_img),cp.deepcopy(self.img_list)))
-                    self.update_img_list(file,dest_file)
+                    self.update_img_list(moved_files,file,dest_file)
         else:
             #Move the file in the source directory to the destination
             #directory, store the move history, & update the image
             #list
             dest_file = os.path.join(self.dest_dir,self.dest_fn)
             moved_files = [(file,dest_file)]
-            self.move_events.append((moved_files,cp.deepcopy(self.cur_img),cp.deepcopy(self.img_list)))
-            
+                      
             move(file,dest_file)
-            self.update_img_list(file,dest_file)
+            self.update_img_list(moved_files,file,dest_file)
             
-            
-    def update_img_list(self,file,dest_file):
+      
+    def update_img_list(self,moved_files,file,dest_file):
+        if settings.allow_undo:
+            #Save the current state
+            self.move_events.append((
+                moved_files,
+                cp.deepcopy(self.cur_img),
+                cp.deepcopy(self.img_list),
+                cp.deepcopy(self.cur_img_bkup),
+                cp.deepcopy(self.img_list_bkup),
+                cp.deepcopy(self.hash_dict),
+                cp.deepcopy(self.dup_hashes),
+                cp.deepcopy(self.hash_ctr),
+                cp.deepcopy(self.reviewing_dup_hashes)))
         #Remove the moved file from the image list
         self.img_list.remove(file)
         if self.dest_root == self.source_dir:
@@ -748,29 +900,35 @@ class App:
         if self.cur_img >= len(self.img_list):
             self.cur_img = 0
          
-        #Set the new image flag
-        self.new_image = True
-        #Close the PIL open image file, reset the zoom cycle and initialize
-        #the next image
-        self.close_open_image()
-        self.reset_zoomcycle()
-        self.init_image()
+        if self.reviewing_dup_hashes:
+            #remove the current image from the backed-up global image list 
+            self.img_list_bkup.remove(file)
+            #Confirm that the current image value doesn't exceed the max
+            #index
+            self.cur_img_bkup %= len(self.img_list_bkup)
+            if self.dest_root == self.source_dir:
+                #If source&dest are the same, add the moved file path
+                #to the backed up global image list
+                self.img_list_bkup.append(dest_file)
+                self.img_list_bkup.sort()
+            if len(self.img_list) == 0:
+                #Remove the current hash from the list of duplicate hashes
+                #and go to the next duplicate hash
+                self.dup_hashes.remove(self.dup_hashes[self.hash_ctr])
+                self.next_dup_hash("no-increment")
+        else:
+            self.load_new_image()
         
         
     def undo(self,dummy=None):
-        #Pop the move source/dest directories, the old image index and the old
-        #image list from the move events list
-        moved_files,self.cur_img,self.img_list = self.move_events.pop()
+        #Pop the previous state
+        moved_files,self.cur_img,self.img_list,self.cur_img_bkup,self.img_list_bkup,self.hash_dict,self.dup_hashes,self.hash_ctr,self.reviewing_dup_hashes = self.move_events.pop()
         #Undo the move(s)
         while len(moved_files)>0:
             moved_from,moved_to = moved_files.pop()
             move(moved_to,moved_from)
-        #Close the PIL open image file, reset the zoom cycle and initialize
-        #the next image
-        self.reset_zoomcycle()
-        self.new_image = True
-        self.close_open_image()
-        self.init_image()
+            
+        self.load_new_image()
         
     def zoomer(self,event):
         #Increment or decrement the zoom step based on the mouse wheel
@@ -840,10 +998,7 @@ class App:
         #Increment the current image index and mod by the number of items
         #in the image list
         self.cur_img = (self.cur_img+step) % len(self.img_list)
-        self.new_image = True
-        #Close the PIL image file and init the new image
-        self.close_open_image()
-        self.init_image()
+        self.load_new_image()
         
     def load_prev_img(self,dummy=None):
         #Move to the next image
@@ -868,11 +1023,7 @@ class App:
             self.cur_img -= 1
             if self.cur_img < 0:
                 self.cur_img = len(self.img_list)-1
-        #Set the new image flag, close the PIL image file, and init the new 
-        #image
-        self.new_image = True
-        self.close_open_image()
-        self.init_image()
+        self.load_new_image()
         
     def close_open_image(self):
         #If an image file was successfully loaded, close it
@@ -1347,7 +1498,11 @@ class App:
             height = 5
         #Build the info text string including the folder, file name, item numbers, 
         #the zoom cycle and percentage, and the random flag
-        counter_text = '{}/{}({}/{} ({}:{}){}'.format(folder,fn,item,num_items,self.zoomcycle,zoom_perc,r_flag)
+        if self.reviewing_dup_hashes:
+            hash_txt = "-dup hash {}/{}".format(self.hash_ctr+1,len(self.dup_hashes))
+        else:
+            hash_txt = ''
+        counter_text = '{}/{}({}/{} ({}:{}){}{}'.format(folder,fn,item,num_items,self.zoomcycle,zoom_perc,hash_txt,r_flag)
         #Add the info text over a black rectangle to the canvas
         text_item = canvas.create_text(5,height,fill='lightblue',anchor='w',font='times 10 bold',text=counter_text,tag='ctr_txt')
         bbox = canvas.bbox(text_item)
@@ -1411,7 +1566,7 @@ def main():
     root = tk.Tk()
     #Make the root window full screen (reduces blinking when switching between windows
     #but makes it harder to view console outputs)
-    # root.attributes('-fullscreen', True)
+    root.attributes('-fullscreen', True)
     #Initialize the application object and start the run
     app = App(root,source_dir,dest_root)
     root.mainloop()

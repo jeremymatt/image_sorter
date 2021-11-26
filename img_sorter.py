@@ -877,17 +877,18 @@ class App:
             
       
     def update_img_list(self,moved_files,file,dest_file):
-        #Save the current state
-        self.move_events.append((
-            moved_files,
-            cp.deepcopy(self.cur_img),
-            cp.deepcopy(self.img_list),
-            cp.deepcopy(self.cur_img_bkup),
-            cp.deepcopy(self.img_list_bkup),
-            cp.deepcopy(self.hash_dict),
-            cp.deepcopy(self.dup_hashes),
-            cp.deepcopy(self.hash_ctr),
-            cp.deepcopy(self.reviewing_dup_hashes)))
+        if settings.allow_undo:
+            #Save the current state
+            self.move_events.append((
+                moved_files,
+                cp.deepcopy(self.cur_img),
+                cp.deepcopy(self.img_list),
+                cp.deepcopy(self.cur_img_bkup),
+                cp.deepcopy(self.img_list_bkup),
+                cp.deepcopy(self.hash_dict),
+                cp.deepcopy(self.dup_hashes),
+                cp.deepcopy(self.hash_ctr),
+                cp.deepcopy(self.reviewing_dup_hashes)))
         #Remove the moved file from the image list
         self.img_list.remove(file)
         if self.dest_root == self.source_dir:
