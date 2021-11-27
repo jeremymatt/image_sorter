@@ -467,9 +467,13 @@ class App:
             else:
                 #Add the current file to the hash dict
                 self.hash_dict[hsh] = [file]
+                
+        for key in self.hash_dict.keys():
+            self.hash_dict[key].sort()
         
         #Convert the duplicate hash set to a list and update the text window
         self.dup_hashes = list(self.dup_hashes)
+        self.dup_hashes.sort()
         txt = 'Checked {} images, found {} duplicate hashes'.format(len(self.img_list),len(self.dup_hashes))
         self.show_text_window('COMPLETED:\nChecking file hashes for images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
         
@@ -771,10 +775,6 @@ class App:
         orig_fn = os.path.split(self.img_list[self.cur_img])[1]
         #Split the filename into name and extension
         fn_parts = orig_fn.split('.')
-        #Cancel if more or less than 1 period in filename
-        if len(fn_parts) != 2:
-            print('WARNING: UNEXPECTED NUMBER OF FILENAME PARTS\n  file not moved')
-            return
         
         #List the files in the destination directory to check for dups
         dest_files = [file for file in os.listdir(self.dest_dir) if os.path.isfile(os.path.join(self.dest_dir,file))]
