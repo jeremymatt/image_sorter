@@ -441,6 +441,7 @@ class App:
         self.dup_hashes = set()
         #Record the start time
         start_time = time.time()
+        missing_files = []
         for ctr,file in enumerate(self.img_list):
             #Check how much time has elapsed
             delta_time = time.time()-start_time
@@ -458,7 +459,10 @@ class App:
             txt = 'Checked {}/{} ({} remaining)'.format(ctr,len(self.img_list),time_remaining)
             self.show_text_window('Checking file hashes for images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
             #Calculate the hash of the current file
-            hsh = hashlib.md5(open(file,'rb').read()).hexdigest()
+            if os.path.isfile(file):
+                hsh = hashlib.md5(open(file,'rb').read()).hexdigest()
+            else:
+                missing_files.append(file)
             if hsh in self.hash_dict.keys():
                 #Add the current hash the duplicate hashes set and add the file
                 #path to the hash dict
@@ -470,6 +474,9 @@ class App:
                 
         for key in self.hash_dict.keys():
             self.hash_dict[key].sort()
+            
+        for file in missing_files:
+            self.img_list.remove(file)
         
         #Convert the duplicate hash set to a list and update the text window
         self.dup_hashes = list(self.dup_hashes)
@@ -878,6 +885,12 @@ class App:
       
     def update_img_list(self,moved_files,file,dest_file):
         if settings.allow_undo:
+            
+            if self.reviewing_dup_hashes:
+                hash_dict_change = (self.dup_hashes[self.hash_ctr],file)
+            else:
+                hash_dict_change = None
+            
             #Save the current state
             self.move_events.append((
                 moved_files,
@@ -885,8 +898,7 @@ class App:
                 cp.deepcopy(self.img_list),
                 cp.deepcopy(self.cur_img_bkup),
                 cp.deepcopy(self.img_list_bkup),
-                cp.deepcopy(self.hash_dict),
-                cp.deepcopy(self.dup_hashes),
+                hash_dict_change,
                 cp.deepcopy(self.hash_ctr),
                 cp.deepcopy(self.reviewing_dup_hashes)))
         #Remove the moved file from the image list
@@ -922,7 +934,16 @@ class App:
         
     def undo(self,dummy=None):
         #Pop the previous state
-        moved_files,self.cur_img,self.img_list,self.cur_img_bkup,self.img_list_bkup,self.hash_dict,self.dup_hashes,self.hash_ctr,self.reviewing_dup_hashes = self.move_events.pop()
+        moved_files,self.cur_img,self.img_list,self.cur_img_bkup,self.img_list_bkup,hash_dict_change,self.hash_ctr,self.reviewing_dup_hashes = self.move_events.pop()
+        
+        if hash_dict_change != None:
+            key,file = hash_dict_change
+            self.hash_dict[key].append(file)
+            self.hash_dict[key].sort()
+            if key not in self.dup_hashes:
+                self.dup_hashes.append(key)
+                self.dup_hashes.sort()
+        
         #Undo the move(s)
         while len(moved_files)>0:
             moved_from,moved_to = moved_files.pop()
