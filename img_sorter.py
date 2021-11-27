@@ -123,11 +123,9 @@ class App:
         #Load saved hashes if available.  Otherwise init empty variables
         #as flags and to avoid errors when saving state for undo
         if os.path.isfile(os.path.join(self.source_dir,'.pickled_hashes')):
-            print('\n\nLoading Pickled hashes')
             with open(os.path.join(self.source_dir,'.pickled_hashes'), 'rb') as file:
                 self.hash_dict = pkl.load(file)
                 self.dup_hashes = pkl.load(file)
-            print('Done loading pickled hashes\n\n')
             self.hash_ctr = 0
         else:
             self.hash_dict = None
@@ -221,14 +219,19 @@ class App:
             self.txt_window.destroy()
             self.reload_img()
         
-    def show_text_window(self,txt):
+    def show_text_window(self,txt,delete_dups=False):
         if not self.open_text_window:
             self.open_text_window = True
             #Init the menu window 
             self.txt_window = tk.Toplevel(self.parent)
             
             self.set_keybindings(self.txt_window)
-        
+            
+            if delete_dups == 'hashes':
+                self.txt_window.bind('<Alt-P>', self.delete_dup_hashes)    #Toggle reviewing lists of images with dup hashes
+            elif delete_dups == 'empty_dir':
+                self.txt_window.bind('<Alt-P>', self.empty_current_folder)    #Toggle reviewing lists of images with dup hashes
+                
             #Add a canvas
             self.txt_canvas = tk.Canvas(self.txt_window,height=1000,width=500)
             self.txt_canvas.pack()
@@ -409,6 +412,8 @@ class App:
         window.bind('<F2>', self.remove_empty_dirs)        #remove empty directories
         window.bind('<F3>', self.check_file_hashes)        #check source dir for duplicate hashes
         window.bind('<F4>', self.toggle_review_dup_hashes) #Toggle reviewing lists of images with dup hashes
+        window.bind('<F5>', self.ask_delete_dup_hashes)    #Toggle reviewing lists of images with dup hashes
+        window.bind('<F6>', self.ask_empty_current_folder) #Toggle reviewing lists of images with dup hashes
         window.bind('<Next>', self.next_dup_hash)          #Next list of dup hashes
         window.bind('<Prior>', self.prev_dup_hash)         #Previous list of dup hashes
         window.bind('<Right>', self.load_next_img)         #Load the next image
@@ -435,6 +440,99 @@ class App:
         window.bind('<ButtonPress-1>',self.move_from)      #Store location of start of pan  
         window.bind('<ButtonRelease-1>',self.move_to)      #Store location of end of pan 
         
+    def ask_delete_dup_hashes(self,dummy=None):
+        self.show_text_window('WARNING:\nAbout to delete images with duplicate hashes\n\nCANNOT BE UNDONE\n\nEnter: Cancel\nAlt+Shift+p: Continue',delete_dups='hashes')
+        
+    def delete_dup_hashes(self,dummy=None):
+        move_ctr = 0
+        start_time = time.time()
+        missing_files = []
+        num_items = len(self.dup_hashes)
+        for ctr,key in enumerate(self.dup_hashes):
+            #Calculate the time remaining to completion & update display
+            time_remaining = self.calc_time_remaining(start_time,ctr,num_items)
+            txt = 'Processed {}/{} ({} remaining)'.format(ctr,num_items,time_remaining)
+            self.show_text_window('Moving duplicate image hashes to temp trash\n ***TEMP TRASH WILL BE EMPTIED ON EXIT***\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+            
+            #Extract the list of duplicate images for the current hash
+            dup_list = self.hash_dict[key]
+            for file in dup_list[1:]:
+                #check that file exists
+                if os.path.isfile(file):
+                    #Update the move counter
+                    move_ctr += 1
+                    #Generate a new filename
+                    fn = os.path.split(file)[1]
+                    trash_files = os.listdir(self.trash_dest)
+                    i=1
+                    while fn in trash_files:
+                        #If filename exists in destination, keep incrementing
+                        #the counter and generating a new filename until an open
+                        #filename is found
+                        name = fn.split('.')[:-1]
+                        name = '.'.join(name)
+                        ext = fn.split('.')[-1]
+                        fn = '{}({}).{}'.format(name,i,ext)
+                        i += 1
+                        
+                    #Move the file to the temp trash directory
+                    dest_file = os.path.join(self.trash_dest,fn)
+                    move(file,dest_file)
+                #Remove the image from the image list
+                self.img_list.remove(file)
+        
+        #Set the hash dict to none and move the hash pickle
+        self.hash_dict = None
+        move(os.path.join(self.source_dir,'.pickled_hashes'),os.path.join(self.trash_dest,'.pickled_hashes'))
+        txt = '{} images moved'.format(move_ctr)
+        self.show_text_window('COMPLETD:\nMoving duplicate image hashes to temp trash\n ***WILL BE EMPTIED ON EXIT***\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+                
+    def ask_empty_current_folder(self,dummy=None):
+        #Find the diretory of the current file & how many files are in it
+        file = self.img_list[self.cur_img]
+        cur_dir = os.path.split(file)[0]
+        files = os.listdir(cur_dir)
+        files = [file for file in files if os.path.isfile(os.path.join(cur_dir,file))]
+        #Warn user that delete is permanent
+        self.show_text_window('WARNING:\nAbout to delete all {} images in\n\n     {}\n\nCANNOT BE UNDONE\n\nEnter: Cancel\nAlt+Shift+p: Continue'.format(len(files),cur_dir),delete_dups='empty_dir')
+                
+    def empty_current_folder(self,dummy=None):
+        #Find the directory of the current image & all the images in that dir
+        file = self.img_list[self.cur_img]
+        cur_dir = os.path.split(file)[0]
+        files = os.listdir(cur_dir)
+        files = [os.path.join(cur_dir,file) for file in files if os.path.isfile(os.path.join(cur_dir,file))]
+        for file in files:
+            #If the file is in the image list, remove it
+            if file in self.img_list:
+                os.remove(file)
+                self.img_list.remove(file)
+        
+        #Check for valid image index
+        if self.cur_img >= len(self.img_list):
+            self.cur_img = 0
+        
+        #Set flag so revised image list will be exported & load the next image
+        self.img_list_updated = True
+        self.close_txt_window()
+        self.load_new_image()
+        
+        
+                    
+    def calc_time_remaining(self,start_time,ctr,num_items):
+        #Check how much time has elapsed
+        delta_time = time.time()-start_time
+        if (delta_time>0) & (ctr > 0):
+            #Calculate the remaining time & convert to a string
+            items_per_sec = ctr/delta_time
+            remaining_sec = (num_items-ctr)/items_per_sec
+            time_remaining = time.strftime('%H:%M:%S',time.gmtime(remaining_sec))
+        else:
+            #Placeholder for the first iteration
+            time_remaining = '---'
+        
+        return time_remaining
+               
     def check_file_hashes(self,dummy=None):
         #Init the hash dict and list of dup hashes
         self.hash_dict = {}
@@ -442,17 +540,9 @@ class App:
         #Record the start time
         start_time = time.time()
         missing_files = []
+        num_items = len(self.img_list)
         for ctr,file in enumerate(self.img_list):
-            #Check how much time has elapsed
-            delta_time = time.time()-start_time
-            if (delta_time>0) & (ctr > 0):
-                #Calculate the remaining time & convert to a string
-                items_per_sec = ctr/delta_time
-                remaining_sec = (len(self.img_list)-ctr)/items_per_sec
-                time_remaining = time.strftime('%H:%M:%S',time.gmtime(remaining_sec))
-            else:
-                #Placeholder for the first iteration
-                time_remaining = '---'
+            time_remaining = self.calc_time_remaining(start_time,ctr,num_items)
             
             #Build the text display string and show the text window to update
             #the user
@@ -737,6 +827,10 @@ class App:
                 menu_txt += 'U/D arrows ==> +/- GIF animation speed\n'
                 menu_txt += 'F1  ==> reload img list from directory\n'
                 menu_txt += 'F2  ==> Recursively remove empty dirs from source\n'
+                menu_txt += 'F3  ==> Check for duplicate image hashes\n'
+                menu_txt += 'F4  ==> Review duplicate image hashes\n'
+                menu_txt += 'F5  ==> Delete all images with hashes\n'
+                menu_txt += 'F6  ==> Delete all imgs in current directory\n'
                 menu_txt += 'F11 ==> toggle full screen\n'
                 menu_txt += 'F12 ==> toggle random display order\n'
                 menu_txt += 'TAB ==> toggle fit to canvas\n'
@@ -884,7 +978,7 @@ class App:
             
       
     def update_img_list(self,moved_files,file,dest_file):
-        if settings.allow_undo:
+        if settings.max_allowed_undo != 0:
             
             if self.reviewing_dup_hashes:
                 hash_dict_change = (self.dup_hashes[self.hash_ctr],file)
@@ -901,6 +995,12 @@ class App:
                 hash_dict_change,
                 cp.deepcopy(self.hash_ctr),
                 cp.deepcopy(self.reviewing_dup_hashes)))
+            
+            #Trim old move events to prevent excessive memory usage
+            if settings.max_allowed_undo != 'all':
+                num_to_keep = min(settings.max_allowed_undo,len(self.move_events))
+                self.move_events = self.move_events[len(self.move_events)-num_to_keep:]
+            
         #Remove the moved file from the image list
         self.img_list.remove(file)
         if self.dest_root == self.source_dir:
@@ -1520,10 +1620,19 @@ class App:
         #Build the info text string including the folder, file name, item numbers, 
         #the zoom cycle and percentage, and the random flag
         if self.reviewing_dup_hashes:
-            hash_txt = "-dup hash {}/{}".format(self.hash_ctr+1,len(self.dup_hashes))
+            hash_txt = "[dup:{}/{}]".format(self.hash_ctr+1,len(self.dup_hashes))
         else:
             hash_txt = ''
-        counter_text = '{}/{}({}/{} ({}:{}){}{}'.format(folder,fn,item,num_items,self.zoomcycle,zoom_perc,hash_txt,r_flag)
+        counter_text = '{}/{} ({}:{}) ({}/{}) {}{} - #undos:{}'.format(
+            folder,
+            fn,
+            self.zoomcycle,
+            zoom_perc,
+            item,
+            num_items,
+            hash_txt,
+            r_flag,
+            len(self.move_events))
         #Add the info text over a black rectangle to the canvas
         text_item = canvas.create_text(5,height,fill='lightblue',anchor='w',font='times 10 bold',text=counter_text,tag='ctr_txt')
         bbox = canvas.bbox(text_item)

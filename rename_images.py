@@ -18,8 +18,8 @@ def get_date_taken(path):
 
 
 root = r'I:test2'
-rename_to_path = False
-rename_to_date = True
+rename_to_path = True
+rename_to_date = False
 
 dirs_to_process = [root]
 img_list = []
