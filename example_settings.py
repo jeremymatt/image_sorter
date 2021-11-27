@@ -19,6 +19,8 @@ fit_to_canvas = True #zoom/shrink to canvas
 include_sub_dirs = True 
 #Display images in random order
 random_display_order = False
+max_allowed_undo = 'all' #integer >=0 or "all"
+max_allowed_undo = 100 #integer >=0 or "all"
 
 #Defines the keystrokes used to move images.  For example, pressing period will
 #move the image to <dest_root>\trash\<image_filename>
