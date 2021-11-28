@@ -32,6 +32,7 @@ import imghdr
 class App:
     def __init__(self, parent,source_dir,dest_root):
         #Init the parent canvas
+        self.start_time = time.time()
         self.parent = parent
         self.parent.lift()
         self.parent.focus_force()
@@ -131,6 +132,9 @@ class App:
             self.hash_dict = None
             self.dup_hashes = None
             self.hash_ctr = None
+            
+        #Counter for how many images where processed
+        self.processed_images = 0
             
         #Init empty backup list/index variables to avoid error when saving state
         #for undo
@@ -506,6 +510,7 @@ class App:
             #If the file is in the image list, remove it
             if file in self.img_list:
                 os.remove(file)
+                self.processed_images += 1
                 self.img_list.remove(file)
         
         #Check for valid image index
@@ -526,12 +531,24 @@ class App:
             #Calculate the remaining time & convert to a string
             items_per_sec = ctr/delta_time
             remaining_sec = (num_items-ctr)/items_per_sec
-            time_remaining = time.strftime('%H:%M:%S',time.gmtime(remaining_sec))
+            
+            hrs,minutes,seconds = self.sec_to_hr_min_sec(remaining_sec)
+            
+            time_remaining = '{}hr {}min {}sec'.format(hrs,str(minutes).zfill(2),str(seconds).zfill(2))
         else:
             #Placeholder for the first iteration
             time_remaining = '---'
         
         return time_remaining
+    
+    def sec_to_hr_min_sec(self,remaining_sec):
+        seconds = int(round(remaining_sec % 60))
+        minutes = int(remaining_sec/60)
+        hrs = int(minutes/60)
+        minutes %= 60
+        
+        return hrs,minutes,seconds
+        
                
     def check_file_hashes(self,dummy=None):
         #Init the hash dict and list of dup hashes
@@ -765,6 +782,14 @@ class App:
         
     def quit_app(self,dummy=None):
         
+        end_time = time.time()
+        elapsed_seconds = end_time-self.start_time
+        hrs,minutes,seconds = self.sec_to_hr_min_sec(elapsed_seconds)
+        time_remaining = self.calc_time_remaining(self.start_time,self.processed_images,len(self.img_list))
+        
+        print('\n\nProcessed {} images; {} remaining.'.format(self.processed_images,len(self.img_list)))
+        print('          Working time: {}hr {}min {}sec'.format(hrs,str(minutes).zfill(2),str(seconds).zfill(2)))
+        print('   Est. time remaining: {}\n\n'.format(time_remaining))
         
         if self.displaying_images:
             #Close the image window
@@ -978,6 +1003,7 @@ class App:
             
       
     def update_img_list(self,moved_files,file,dest_file):
+        self.processed_images += 1
         if settings.max_allowed_undo != 0:
             
             if self.reviewing_dup_hashes:
@@ -1048,7 +1074,8 @@ class App:
         while len(moved_files)>0:
             moved_from,moved_to = moved_files.pop()
             move(moved_to,moved_from)
-            
+        
+        self.processed_images -= 1
         self.load_new_image()
         
     def zoomer(self,event):
