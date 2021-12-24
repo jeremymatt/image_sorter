@@ -121,6 +121,13 @@ class App:
         #set flag for reviewing duplicate hash values
         self.reviewing_dup_hashes = False
         
+        #Flag for missing images
+        self.img_missing = False
+        
+        #set mouse position to 0,0 if mouse hasn't moved
+        self.mouse_x = 0
+        self.mouse_y = 0
+        
         #Load saved hashes if available.  Otherwise init empty variables
         #as flags and to avoid errors when saving state for undo
         if os.path.isfile(os.path.join(self.source_dir,'.pickled_hashes')):
@@ -223,6 +230,83 @@ class App:
             self.txt_window.destroy()
             self.reload_img()
         
+    def show_input_window(self,dummy=None):
+        #Init the menu window 
+        self.input_window = tk.Toplevel(self.parent)
+        self.input_window.title('Go to image # of {}'.format(len(self.img_list)))
+        self.input_window.geometry('400x200+200+200')
+        self.input_window.bind('<Return>',self.close_input_and_go)      #Close text window if one is open
+        self.input_window.bind("<Control-q>",self.quit_app)           #Quit app
+        self.input_window.bind("<Escape>",self.quit_app)              #Quit app
+        
+        
+        self.input_txt = tk.Text(self.input_window,height=7,width=100)
+        
+        self.input_txt.pack()
+        
+        button = tk.Button(self.input_window,text='Go to',command = self.close_input_and_go)
+        button.pack()
+        button2 = tk.Button(self.input_window,text='Cancel',command = self.close_input)
+        button2.pack()
+        self.input_window.focus_force()
+        self.input_txt.focus_force()
+        self.input_txt.focus()
+        
+        
+    def close_input(self,dummy=None):
+        self.input_window.destroy()
+        
+    def close_input_and_go(self,dummy=None):
+        inpt = self.input_txt.get('1.0', "end-1c")
+        
+        if inpt[0] in ['-','+']:
+            try:
+                inpt = int(inpt)
+            except:
+                return
+            self.cur_img += inpt
+            self.cur_img %= len(self.img_list)
+        else:
+            try:
+                inpt = int(inpt)
+            except:
+                return
+            self.cur_img = min(inpt-1,len(self.img_list)-1)
+            
+        self.load_new_image()           
+          
+        self.input_window.destroy()
+        
+        
+        # self.set_keybindings(self.input_window)
+        
+            
+        # #Add a canvas
+        # self.txt_canvas = tk.Canvas(self.input_window,height=1000,width=500)
+        # self.txt_canvas.pack()
+        # #Create a text item of the menu text
+        # self.text_item = self.txt_canvas.create_text(
+        #     25,
+        #     25,
+        #     fill='black',
+        #     font='times 10 bold',
+        #     text=txt,tag='menu_txt',
+        #     anchor=tk.NW)
+        # #Make a bounding box around the text to determine required window size
+        # bbox = self.txt_canvas.bbox(self.text_item)
+        # dim = (bbox[2]-bbox[0]+100,bbox[3]-bbox[1]+100)
+        # #Set the window geometry to the dimensions of the bounding box plus 
+        # #some padding and move the text item to the center of the window
+        # locn = [int(self.screen_width/2-dim[0]/2),int(self.screen_height/2-dim[1]/2)]
+        # self.txt_window.geometry(f'{dim[0]}x{dim[1]}+{locn[0]}+{locn[1]}')
+        # self.txt_canvas.move(self.text_item,25,25)
+        # self.txt_canvas.update()
+        # # self.txt_canvas.tag_raise(self.text_item)
+        # self.txt_window.focus_force()
+        
+        
+        
+        
     def show_text_window(self,txt,delete_dups=False):
         if not self.open_text_window:
             self.open_text_window = True
@@ -288,7 +372,6 @@ class App:
                 ctr +=1
                 txt = '{} dirs checked ({} dirs remaining).  Found {} images'.format(ctr,len(dirs_to_process),len(self.img_list))
                 self.show_text_window('Searching for images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
-                # print('{} files, {} dirs to process'.format(len(self.img_list),len(dirs_to_process)))
                 #list of all files in the directory
                 new_files = [file for file in os.listdir(cur_dir) if os.path.isfile(os.path.join(cur_dir,file))]
                 #Add absolute path to the file names
@@ -328,7 +411,7 @@ class App:
         self.display_txt = '{} checked, {} removed'.format(self.num_dirs,self.num_removed)
         self.show_text_window('Removing empty directories from:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,self.display_txt))
        
-        #List the items in the directory
+        #List the items in the directory print
         dir_list = os.listdir(cur_dir)
         #Store the files and subdirectories in separate lists
         new_files = [file for file in dir_list if os.path.isfile(os.path.join(cur_dir,file))]
@@ -411,13 +494,15 @@ class App:
         
     def set_keybindings(self,window):
         #Set keybindings for the program controls
-        window.bind('<F11>', self.toggle_fs)               #toggle full screen
         window.bind('<F1>', self.reload_img_list)          #Check source for images
         window.bind('<F2>', self.remove_empty_dirs)        #remove empty directories
         window.bind('<F3>', self.check_file_hashes)        #check source dir for duplicate hashes
         window.bind('<F4>', self.toggle_review_dup_hashes) #Toggle reviewing lists of images with dup hashes
-        window.bind('<F5>', self.ask_delete_dup_hashes)    #Toggle reviewing lists of images with dup hashes
-        window.bind('<F6>', self.ask_empty_current_folder) #Toggle reviewing lists of images with dup hashes
+        window.bind('<F5>', self.ask_delete_dup_hashes)    #Delete all duplicate hashes (ask user first)
+        window.bind('<F6>', self.ask_empty_current_folder) #Delete all files in current directory (ask user first)
+        window.bind('<F10>', self.show_input_window)       #Goto specific image number
+        window.bind('<F11>', self.toggle_fs)               #toggle full screen
+        window.bind("<F12>",self.toggle_rand_order)        #Display images in random order
         window.bind('<Next>', self.next_dup_hash)          #Next list of dup hashes
         window.bind('<Prior>', self.prev_dup_hash)         #Previous list of dup hashes
         window.bind('<Right>', self.load_next_img)         #Load the next image
@@ -431,7 +516,6 @@ class App:
         window.bind("<Control-z>",self.undo)               #Undo file move
         window.bind("<Control-q>",self.quit_app)           #Quit app
         window.bind("<Escape>",self.quit_app)              #Quit app
-        window.bind("<F12>",self.toggle_rand_order)        #Display images in random order
         window.bind("<Control-r>",self.reload_img)         #Reset zoom, animation speed etc. to defaults
         window.bind('<Alt-m>',self.toggle_menu)            #Display controls menu
         window.bind('<KeyRelease>',self.keyup)             #Monitor key presses (check for file moves)
@@ -452,6 +536,7 @@ class App:
         start_time = time.time()
         missing_files = []
         num_items = len(self.dup_hashes)
+        self.close_open_image()
         for ctr,key in enumerate(self.dup_hashes):
             #Calculate the time remaining to completion & update display
             time_remaining = self.calc_time_remaining(start_time,ctr,num_items)
@@ -490,6 +575,7 @@ class App:
         move(os.path.join(self.source_dir,'.pickled_hashes'),os.path.join(self.trash_dest,'.pickled_hashes'))
         txt = '{} images moved'.format(move_ctr)
         self.show_text_window('COMPLETD:\nMoving duplicate image hashes to temp trash\n ***WILL BE EMPTIED ON EXIT***\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+        self.reload_img()
                 
     def ask_empty_current_folder(self,dummy=None):
         #Find the diretory of the current file & how many files are in it
@@ -506,18 +592,26 @@ class App:
         cur_dir = os.path.split(file)[0]
         files = os.listdir(cur_dir)
         files = [os.path.join(cur_dir,file) for file in files if os.path.isfile(os.path.join(cur_dir,file))]
+        #keep only files remove list that are in the image list
+        files = [file for file in files if file in self.img_list]
+        files.sort()
+        #Find the position of the currently viewed image within the current folder
+        #for indexing purposes
+        folder_position = files.index(file)
         for file in files:
-            #If the file is in the image list, remove it
-            if file in self.img_list:
-                os.remove(file)
-                self.processed_images += 1
-                self.img_list.remove(file)
+            # #If the file is in the image list, remove it
+            # if file in self.img_list:
+            os.remove(file)
+            self.processed_images += 1
+            self.img_list.remove(file)
         
+        #Update the index
+        self.cur_img -= folder_position
         #Check for valid image index
         if self.cur_img >= len(self.img_list):
             self.cur_img = 0
         
-        #Set flag so revised image list will be exported & load the next image
+        #Set flag so revised image list will be exported on exit & load the next image
         self.img_list_updated = True
         self.close_txt_window()
         self.load_new_image()
@@ -558,9 +652,9 @@ class App:
         start_time = time.time()
         missing_files = []
         num_items = len(self.img_list)
+        self.close_open_image()
         for ctr,file in enumerate(self.img_list):
             time_remaining = self.calc_time_remaining(start_time,ctr,num_items)
-            
             #Build the text display string and show the text window to update
             #the user
             txt = 'Checked {}/{} ({} remaining)'.format(ctr,len(self.img_list),time_remaining)
@@ -590,6 +684,7 @@ class App:
         self.dup_hashes.sort()
         txt = 'Checked {} images, found {} duplicate hashes'.format(len(self.img_list),len(self.dup_hashes))
         self.show_text_window('COMPLETED:\nChecking file hashes for images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+        self.reload_img()
         
         
     def toggle_review_dup_hashes(self,dummy=None):
@@ -738,7 +833,6 @@ class App:
     def motion(self,event):
         #Track motion of the mouse
         self.mouse_x,self.mouse_y = event.x,event.y
-        # print('mouse motion ==> x:{} y:{}'.format(self.mouse_x,self.mouse_y))
         
     def move_from(self,event):
         #Store starting point of image pan
@@ -856,6 +950,7 @@ class App:
                 menu_txt += 'F4  ==> Review duplicate image hashes\n'
                 menu_txt += 'F5  ==> Delete all images with hashes\n'
                 menu_txt += 'F6  ==> Delete all imgs in current directory\n'
+                menu_txt += 'F10 ==> Goto specific image number\n'
                 menu_txt += 'F11 ==> toggle full screen\n'
                 menu_txt += 'F12 ==> toggle random display order\n'
                 menu_txt += 'TAB ==> toggle fit to canvas\n'
@@ -897,6 +992,14 @@ class App:
     def move_file(self):
         #Store the current file in local variable
         file = self.img_list[self.cur_img]
+        
+        if self.img_missing:
+            self.img_list.remove(file)
+            self.cur_img %= len(self.img_list)
+            self.init_image()
+            self.img_missing = False
+            return
+        
         #Split off the filename
         orig_fn = os.path.split(self.img_list[self.cur_img])[1]
         #Split the filename into name and extension
@@ -1377,6 +1480,7 @@ class App:
             sequence = [ImageTk.PhotoImage(img) for img in img_frames]
         else:
             sequence = False
+            self.img_missing = True
         
         return sequence
     
@@ -1466,8 +1570,8 @@ class App:
             image=self.new_sequence[0],
             tag='new_img')
         #Print the name and dimensions of the source directory file
-        txt = '{}({}x{}'.format(new_file,new_width,new_height)
-        text_item = new_canvas.create_text(5,5,fill='lightblue',anchor='w',font='times 10 bold',text=txt,tag='new_txt')
+        txt = '{}\n({}x{})'.format(new_file,new_width,new_height)
+        text_item = new_canvas.create_text(5,0,fill='lightblue',anchor='nw',font='times 10 bold',text=txt,tag='new_txt')
         bbox = new_canvas.bbox(text_item)
         rect_item = new_canvas.create_rectangle(bbox,fill='black',tag='new_txt')
         new_canvas.tag_raise(text_item,rect_item)
@@ -1484,8 +1588,8 @@ class App:
             image=self.existing_sequence[0],
             tag='new_img')
         #Print the name and dimensions of the destination directory file
-        txt = '{}({}x{}'.format(existing_file,existing_width,existing_height)
-        text_item = existing_canvas.create_text(5,5,fill='lightblue',anchor='w',font='times 10 bold',text=txt,tag='ex_txt')
+        txt = '{}\n({}x{})'.format(existing_file,existing_width,existing_height)
+        text_item = existing_canvas.create_text(5,0,fill='lightblue',anchor='nw',font='times 10 bold',text=txt,tag='ex_txt')
         bbox = existing_canvas.bbox(text_item)
         rect_item = existing_canvas.create_rectangle(bbox,fill='black',tag='ex_txt')
         existing_canvas.tag_raise(text_item,rect_item)
@@ -1558,10 +1662,6 @@ class App:
         self.parent.focus_force()
         self.img_window.lift()
         
-        if self.open_text_window:
-            self.txt_window.lift()
-            self.txt_window.focus_force()
-        
         #If there is a compare window, lift that to the top
         if self.has_compare_window:
             self.img_compare_window.lift()
@@ -1595,7 +1695,7 @@ class App:
             self.canvas.tag_raise(text_item)
         #If the current file doesn't exist, inform the user
         elif sequence == False:
-            error_text = 'Image does not exist\n\nPress F1 to re-check \nthe source directory'
+            error_text = 'Image does not exist\n\n   Press F1 to re-check the source directory\n   Press any move key to remove image from list'
             text_item = self.canvas.create_text(
                 int(self.img_window_width/2),
                 int(self.img_window_height/2),
@@ -1610,10 +1710,19 @@ class App:
             #Create an image on the canvas and load first frame in the image sequence
             self.image = self.canvas.create_image(int(self.img_window_width/2),int(self.img_window_height/2), image=sequence[0],tag='img')
             inputs = (self.canvas,self.img_window,self.image)
+            parts = os.path.split(self.img_list[self.cur_img])
+            self.num_in_cur_dir = len([item for item in os.listdir(parts[0]) if os.path.join(parts[0],item) in self.img_list])
+            self.fn = parts[1]
+            #Extract the name of the containing folder from the absolute path
+            self.folder = os.path.split(parts[0])[1]
             self.animate(0,sequence,inputs)
             
         
     def animate(self, counter,sequence,inputs):
+    
+        if self.open_text_window:
+            self.txt_window.lift()
+            self.txt_window.focus_force()
         #Unpack the inputs
         canvas,img_window,image = inputs
         #Reset the image frame to the one designated by the frame counter
@@ -1640,31 +1749,76 @@ class App:
         #the text
         if self.rand_order:
             r_flag = '\nR'
-            height = 13
+            r_height = 8
         else:
             r_flag = ''
-            height = 5
+            r_height = 0
+            
+        if len(self.move_events)>0:
+            u_flag = '\n#undos:{}'.format(len(self.move_events))
+            u_height = 8
+        else:
+            u_flag = ''
+            u_height = 0
         #Build the info text string including the folder, file name, item numbers, 
         #the zoom cycle and percentage, and the random flag
         if self.reviewing_dup_hashes:
-            hash_txt = "[dup:{}/{}]".format(self.hash_ctr+1,len(self.dup_hashes))
+            hash_txt = "\n[hash dup:{}/{}]".format(self.hash_ctr+1,len(self.dup_hashes))
+            h_height = 8
         else:
             hash_txt = ''
-        counter_text = '{}/{} ({}:{}) ({}/{}) {}{} - #undos:{}'.format(
-            folder,
-            fn,
+            h_height = 0
+            
+        # counter_text = '{}/{} ({}:{}) ({}/{}) \nItems in cur dir: {}{}{}{}'.format(
+        #     self.folder,
+        #     self.fn,
+        #     self.zoomcycle,
+        #     zoom_perc,
+        #     item,
+        #     num_items,
+        #     self.num_in_cur_dir,
+        #     hash_txt,
+        #     u_flag,
+        #     r_flag)
+        
+        
+        # height = 20+r_height+u_height+h_height
+        # #Add the info text over a black rectangle to the canvas
+        # text_item = canvas.create_text(5,height,fill='lightblue',anchor='nw',font='times 10 bold',text=counter_text,tag='ctr_txt')
+        # bbox = canvas.bbox(text_item)
+        # rect_item = canvas.create_rectangle(bbox,fill='black',tag='ctr_txt')
+        # canvas.tag_raise(text_item,rect_item)
+        
+        
+        counter_text1 = '{}/{}'.format(
+            self.folder,
+            self.fn)
+        
+        counter_text2 = 'Zoom:{}({})\nImage:{}/{} \nItems in cur dir: {}{}{}{}'.format(
             self.zoomcycle,
             zoom_perc,
             item,
             num_items,
+            self.num_in_cur_dir,
             hash_txt,
-            r_flag,
-            len(self.move_events))
+            u_flag,
+            r_flag)
+        
+        
+        height = 20+r_height+u_height+h_height
         #Add the info text over a black rectangle to the canvas
-        text_item = canvas.create_text(5,height,fill='lightblue',anchor='w',font='times 10 bold',text=counter_text,tag='ctr_txt')
-        bbox = canvas.bbox(text_item)
-        rect_item = canvas.create_rectangle(bbox,fill='black',tag='ctr_txt')
-        canvas.tag_raise(text_item,rect_item)
+        text_item1 = canvas.create_text(5,5,fill='lightblue',anchor='nw',font='times 10 bold',text=counter_text1,tag='ctr_txt1')
+        bbox = canvas.bbox(text_item1)
+        rect_item1 = canvas.create_rectangle(bbox,fill='black',tag='ctr_txt1')
+        
+        if settings.show_statistics:
+            text_item2 = canvas.create_text(5,20,fill='lightblue',anchor='nw',font='times 10 bold',text=counter_text2,tag='ctr_txt1')
+            bbox = canvas.bbox(text_item2)
+            rect_item2 = canvas.create_rectangle(bbox,fill='black',tag='ctr_txt1')
+            
+        canvas.tag_raise(text_item1,rect_item1)
+        canvas.tag_raise(text_item2,rect_item2)
+        
         
         #After the delay specified by the GIF animation frame rate parameter
         #increment the counter, mod it by the number of frames in the animation
