@@ -17,7 +17,7 @@ def get_date_taken(path):
     return Image.open(path)._getexif()[36867]
 
 
-root = r'I:test2'
+root = r'I:test2\to_rename'
 rename_to_path = True
 rename_to_date = False
 
@@ -38,6 +38,7 @@ while len(dirs_to_process)>0:
     
 file = img_list[0]
 cur_path = ''
+
 
 for file in tqdm.tqdm(img_list):
     path,fn = os.path.split(file)
