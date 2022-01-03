@@ -9,8 +9,8 @@ import backup_dir as BD
 
 from_dir = r'P:\t'
 to_dir = r'P:\t_bkup'
-from_dir = 'J:\\'
-to_dir = 'K:\\'
+from_dir = 'P:\\'
+to_dir = 'Q:\\'
 
 bdo = BD.backup_dirs(from_dir,to_dir)
 

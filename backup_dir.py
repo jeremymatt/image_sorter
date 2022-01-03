@@ -11,32 +11,129 @@ import tqdm
 
 from shutil import copy
 
+import datetime as DT
+
+def sec_to_timestring(seconds):
+    
+    mins = int(seconds//60)
+            
+    secs = int(round(seconds%60,0))
+    hrs = int(mins//60)
+    mins = mins%60
+    string = '{}:{}:{}'.format(str(hrs).zfill(2),str(mins).zfill(2),str(secs).zfill(2))
+    return string
+
 class backup_dirs:
     def __init__(self,from_dir,to_dir):
+        print('\nSearching Directories')
         self.num_dirs = 0
         self.num_removed = 0
         self.from_dir = from_dir
         self.to_dir = to_dir
+        
+        self.longspace = '                                                                                                                                                                                                                                     '
+        
+        self.start_time = DT.datetime.now()
+        
+        self.ignore_dirs = [
+            '$RECYCLE.BIN',
+            'System Volume Information']
         
         self.copy_list = []
         self.delete_list = []
         self.rmdir_list = []
         cur_dir = ''
         self.check_dir(cur_dir)
-        for dr in self.rmdir_list:
+        self.process_changes()
+        self.print_bkup_state()
+        
+        
+    def process_changes(self):
+        print('\n')
+        for dr in tqdm.tqdm(self.rmdir_list,desc='Removing directories: '):
             self.rmdirs(dr)
-        for file in self.delete_list:
+        for file in tqdm.tqdm(self.delete_list,desc='Removing files: '):
             os.remove(file)
-        for frm,to in tqdm.tqdm(self.copy_list,desc="Copying files: "):
+            
+        start_time = DT.datetime.now()
+        print('\n')
+        for ind,val in enumerate(self.copy_list):
+            frm,to = val
+            delta_t = DT.datetime.now()-start_time
+            seconds = delta_t.seconds
+            breakhere=1
+            if seconds>0:
+                it_per_sec = ind/seconds
+                sec_remaining = (len(self.copy_list)-ind)/it_per_sec
+                sec_remaining = sec_to_timestring(sec_remaining)
+                it_per_sec = round(it_per_sec,2)
+            else:
+                sec_remaining = 'n/a'
+                it_per_sec = 'n/a '
+            
+            perc = "{}%".format(int(round(100*ind/len(self.copy_list))))
+            print('\rCopying Files: {} | {}/{} [{}/{} {}it/s] - file: {}{}'.format(
+                perc,
+                ind,
+                len(self.copy_list),
+                sec_remaining,
+                sec_to_timestring(seconds),
+                it_per_sec,
+                frm,
+                self.longspace),end="")
             copy(frm,to)
+            
+            
+    def print_bkup_state(self):
+            
+        completed = DT.datetime.now()
+        completed = str(completed).split('.')[0]
+        completed = completed.split(' ')
+        
+        fn = 'backup_{}_{}.txt'.format(completed[0],completed[1])
+        
+        fn = fn.replace(':','-')
+        
+        if not os.path.isdir(os.path.join(self.from_dir,'backup_logs')):
+            os.makedirs(os.path.join(self.from_dir,'backup_logs'))
+            
+        old_logs = os.listdir(os.path.join(self.from_dir,'backup_logs'))
+        old_logs.sort()
+        
+        for f in old_logs[:-2]:
+            os.remove(os.path.join(self.from_dir,'backup_logs',f))
+        
+        with open(os.path.join(self.from_dir,'backup_logs',fn),'w', encoding="utf-8") as f:
+            f.write('Removed directories:\n')
+            for dr in self.rmdir_list:
+                f.write('   {}\n'.format(dr))
+            f.write('\n\nDeleted files:\n')
+            for file in self.delete_list:
+                f.write('del:   {}\n'.format(file))
+            f.write('\n\nCopied files:\n')
+            for file in self.copy_list:
+                f.write('copy:   {}\n'.format(file))
+                
+                
+        if not os.path.isdir(os.path.join(self.to_dir,'backup_logs')):
+            os.makedirs(os.path.join(self.to_dir,'backup_logs'))
+            
+        copy(os.path.join(self.from_dir,'backup_logs',fn),
+             os.path.join(self.to_dir,'backup_logs',fn))
             
         
         
     def check_dir(self,cur_dir):
+        
+        self.num_dirs += 1
+        
         from_dir = os.path.join(self.from_dir,cur_dir)
         from_file_list,from_dir_list = self.list_dir(from_dir)
         to_dir = os.path.join(self.to_dir,cur_dir)
         to_file_list,to_dir_list = self.list_dir(to_dir)
+        
+        delta_t = str(DT.datetime.now()-self.start_time).split('.')[0]
+        print('\r{}: | Elapsed Time: {} | {}{}'.format(str(self.num_dirs).zfill(5),delta_t,from_dir,self.longspace),end="")
         
         files_both,files_from,files_to = self.compare_lists(from_file_list, to_file_list)
         dirs_both,dirs_from,dirs_to = self.compare_lists(from_dir_list, to_dir_list)
@@ -72,9 +169,9 @@ class backup_dirs:
         return frm_size == to_size
     
     def compare_lists(self,frm,to):
-        in_both = [item for item in frm if item in to]
-        in_from_only = [item for item in frm if item not in to]
-        in_to_only = [item for item in to if item not in frm]
+        in_both = [item for item in frm if (item in to) and (item not in self.ignore_dirs)]
+        in_from_only = [item for item in frm if (item not in to) and (item not in self.ignore_dirs)]
+        in_to_only = [item for item in to if (item not in frm) and (item not in self.ignore_dirs)]
         
         return in_both,in_from_only,in_to_only
         
