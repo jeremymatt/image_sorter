@@ -17,7 +17,7 @@ def get_date_taken(path):
     return Image.open(path)._getexif()[36867]
 
 
-root = r'I:test2\to_rename'
+root = r'P:\to_rename'
 rename_to_path = True
 rename_to_date = False
 
@@ -57,5 +57,5 @@ for file in tqdm.tqdm(img_list):
     if rename_to_date:
         date = get_date_taken(file)
     
-img = Image.open(file)
-exif = img._getexif()
+# img = Image.open(file)
+# exif = img._getexif()

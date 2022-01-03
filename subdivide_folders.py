@@ -27,7 +27,7 @@ def get_date_taken(path):
 
 file_limit = 1000
 
-root = r'I:test2'
+root = r'P:test3'
 rename_to_path = True
 rename_to_date = False
 
