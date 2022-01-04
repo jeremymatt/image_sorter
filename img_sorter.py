@@ -484,6 +484,7 @@ class App:
         window.bind('<F4>', self.toggle_review_dup_hashes) #Toggle reviewing lists of images with dup hashes
         window.bind('<F5>', self.ask_delete_dup_hashes)    #Delete all duplicate hashes (ask user first)
         window.bind('<F6>', self.ask_empty_current_folder) #Delete all files in current directory (ask user first)
+        window.bind('<F8>', self.remove_all_missing)       #Check image list for missing files
         window.bind('<F9>', self.toggle_info_text)         #Toggle info displayed on image
         window.bind('<F10>', self.show_input_window)       #Goto specific image number
         window.bind('<F11>', self.toggle_fs)               #toggle full screen
@@ -519,7 +520,7 @@ class App:
         self.img_info_display = (self.img_info_display+1)%4
     
     def next_folder(self,dummy=None):
-        files = self.get_folder_pos_and_size()
+        self.get_folder_pos_and_size()
         
         
         #Update the index
@@ -528,7 +529,7 @@ class App:
         if self.cur_img >= len(self.img_list):
             self.cur_img = 0
         
-        files = self.get_folder_pos_and_size()
+        self.get_folder_pos_and_size()
         
         #Set flag so revised image list will be exported on exit & load the next image
         self.img_list_updated = True
@@ -537,7 +538,7 @@ class App:
         
         
     def prev_folder(self,dummy=None):
-        files = self.get_folder_pos_and_size()
+        self.get_folder_pos_and_size()
         
         #Update the index
         self.cur_img -= (self.folder_position+1)
@@ -545,7 +546,7 @@ class App:
         if self.cur_img < 0:
             self.cur_img = len(self.img_list)-1
         
-        files = self.get_folder_pos_and_size()
+        self.get_folder_pos_and_size()
         
         #Set flag so revised image list will be exported on exit & load the next image
         self.img_list_updated = True
@@ -626,6 +627,8 @@ class App:
         #Check for valid image index
         if self.cur_img >= len(self.img_list):
             self.cur_img = 0
+            
+        files = self.get_folder_pos_and_size()
         
         #Set flag so revised image list will be exported on exit & load the next image
         self.img_list_updated = True
@@ -636,7 +639,13 @@ class App:
         #Find the directory of the current image & all the images in that dir
         file = self.img_list[self.cur_img]
         cur_dir = os.path.split(file)[0]
-        files = os.listdir(cur_dir)
+        if os.path.isdir(cur_dir):
+            files = os.listdir(cur_dir)
+        else:
+            self.folder_position = -100000
+            self.num_files_in_folder = 0
+            return []
+        
         files = [os.path.join(cur_dir,file) for file in files if os.path.isfile(os.path.join(cur_dir,file))]
         #keep only files remove list that are in the image list
         files = [file for file in files if file in self.img_list]
@@ -710,12 +719,42 @@ class App:
             
         for file in missing_files:
             self.img_list.remove(file)
+            
+        self.cur_img = min(len(self.img_list)-1,self.cur_img)
         
         #Convert the duplicate hash set to a list and update the text window
         self.dup_hashes = list(self.dup_hashes)
         self.dup_hashes.sort()
         txt = 'Checked {} images, found {} duplicate hashes'.format(len(self.img_list),len(self.dup_hashes))
         self.show_text_window('COMPLETED:\nChecking file hashes for images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+        self.reload_img()
+        
+               
+    def remove_all_missing(self,dummy=None):
+        #Record the start time
+        start_time = time.time()
+        missing_files = []
+        num_items = len(self.img_list)
+        self.close_open_image()
+        for ctr,file in enumerate(self.img_list):
+            time_remaining = self.calc_time_remaining(start_time,ctr,num_items)
+            #Build the text display string and show the text window to update
+            #the user
+            txt = 'Checked {}/{} ({} remaining)'.format(ctr,len(self.img_list),time_remaining)
+            self.show_text_window('Checking file list for missing images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+            #Calculate the hash of the current file
+            if not os.path.isfile(file):
+                missing_files.append(file)
+           
+            
+        for file in missing_files:
+            self.img_list.remove(file)
+            
+        self.cur_img = min(len(self.img_list)-1,self.cur_img)
+        
+        txt = 'Checked {} entries, found {} missing files ({} remaining)'.format(num_items,len(missing_files),len(self.img_list))
+        self.show_text_window('COMPLETED:\nChecking file hashes for images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+        self.get_folder_pos_and_size()
         self.reload_img()
         
         
@@ -982,6 +1021,7 @@ class App:
                 menu_txt += 'F4  ==> Review duplicate image hashes\n'
                 menu_txt += 'F5  ==> Delete all images with hashes\n'
                 menu_txt += 'F6  ==> Delete all imgs in current directory\n'
+                menu_txt += 'F8  ==> Check image list for missing images\n'
                 menu_txt += 'F9  ==> Toggle image info displayed\n'
                 menu_txt += 'F10 ==> Goto specific image number\n'
                 menu_txt += 'F11 ==> toggle full screen\n'
@@ -1131,6 +1171,8 @@ class App:
             #Move the file in the source directory to the destination
             #directory, store the move history, & update the image
             #list
+            #Close the PIL image file
+            self.close_open_image()
             dest_file = os.path.join(self.dest_dir,self.dest_fn)
             moved_files = [(file,dest_file)]
                       
@@ -1170,9 +1212,11 @@ class App:
             self.img_list.sort()
         if self.rand_order:
             self.cur_img = random.randint(0,len(self.img_list)-1)
-        #If the last image was removed, set the image index to the start
+        #If the last image was removed, set the image index to the new last image
         if self.cur_img >= len(self.img_list):
-            self.cur_img = 0
+            self.cur_img = len(self.img_list)-1
+            
+        
          
         if self.reviewing_dup_hashes:
             #remove the current image from the backed-up global image list 
@@ -1191,6 +1235,7 @@ class App:
                 self.dup_hashes.remove(self.dup_hashes[self.hash_ctr])
                 self.next_dup_hash("no-increment")
         else:
+            files = self.get_folder_pos_and_size()
             self.load_new_image()
         
         
@@ -1505,11 +1550,11 @@ class App:
                 self.has_open_image=True
                 #Set the rotation to default of zero
                 self.rotation = 0
-                #Find the width/height of the raw image file
-                (self.img_width, self.img_height) = Image.open(img_file).size
-                
                 #Open the image file
                 self.open_image = Image.open(img_file)
+                #Find the width/height of the raw image file
+                (self.img_width, self.img_height) = self.open_image.size
+                
                 #Set the flag to indicate that an image is already loaded (to avoid
                 #unnecessary disk accesses)
                 self.new_image = False
@@ -1740,7 +1785,7 @@ class App:
             self.canvas.tag_raise(text_item)
         #If the current file doesn't exist, inform the user
         elif sequence == False:
-            error_text = 'Image does not exist\n\n   Press F1 to re-check the source directory\n   Press any move key to remove image from list'
+            error_text = 'Image does not exist\n\n   Press F1 to re-check the source directory\n   Press F8 to check image list for missing files\n   Press any move key to remove image from list'
             text_item = self.canvas.create_text(
                 int(self.img_window_width/2),
                 int(self.img_window_height/2),
