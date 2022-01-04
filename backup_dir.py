@@ -31,6 +31,8 @@ class backup_dirs:
         self.from_dir = from_dir
         self.to_dir = to_dir
         
+        self.previous_length = 0
+        
         self.longspace = '                                                                                                                                                                                                                                     '
         
         self.start_time = DT.datetime.now()
@@ -41,7 +43,7 @@ class backup_dirs:
         
         self.ignore_files = [
             '.is_backup',
-            '.is_backup2']
+            '.bkup_settings']
         
     
     def backup(self):
@@ -62,6 +64,7 @@ class backup_dirs:
         
     def process_changes(self):
         print('\n')
+        self.previous_length = 0
         for dr in tqdm.tqdm(self.rmdir_list,desc='Removing directories: '):
             self.rmdirs(dr)
         for file in tqdm.tqdm(self.delete_list,desc='Removing files: '):
@@ -85,15 +88,20 @@ class backup_dirs:
                 it_per_sec = 'n/a '
             
             perc = "{}%".format(int(round(100*ind/len(self.copy_list))))
-            print('\rCopying Files: {} | {}/{} [{}/{} {}it/s] - file: {}{}'.format(
+            print_str = 'Copying Files: {} | {}/{} [{}/{} {}it/s] - file: {}'.format(
                 perc,
                 ind,
                 len(self.copy_list),
                 sec_remaining,
                 sec_to_timestring(seconds),
                 it_per_sec,
-                frm,
-                self.longspace),end="")
+                frm)
+            
+            
+            pad_len = max(len(print_str),self.previous_length)-len(print_str)
+            self.previous_length = len(print_str)
+            # print('t{}b'.format(' '*25))
+            print('\r{}{}'.format(print_str,' '*pad_len),end="")
             copy(frm,to)
             
             
@@ -149,7 +157,11 @@ class backup_dirs:
         to_file_list,to_dir_list = self.list_dir(to_dir)
         
         delta_t = str(DT.datetime.now()-self.start_time).split('.')[0]
-        print('\r{}: | Elapsed Time: {} | {}{}'.format(str(self.num_dirs).zfill(5),delta_t,from_dir,self.longspace),end="")
+        print_str = '{}: | Elapsed Time: {} | {}'.format(str(self.num_dirs).zfill(5),delta_t,from_dir)
+        pad_len = max(len(print_str),self.previous_length)-len(print_str)
+        self.previous_length = len(print_str)
+        # print('t{}b'.format(' '*25))
+        print('\r{}{}'.format(print_str,' '*pad_len),end="")
         
         files_both,files_from,files_to = self.compare_lists(from_file_list, to_file_list)
         dirs_both,dirs_from,dirs_to = self.compare_lists(from_dir_list, to_dir_list)
