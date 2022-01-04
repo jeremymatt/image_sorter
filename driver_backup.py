@@ -13,6 +13,7 @@ from_dir = 'P:\\'
 to_dir = 'Q:\\'
 
 bdo = BD.backup_dirs(from_dir,to_dir)
+bdo.backup()
 
 # print('rmdirs:\n{}'.format(bdo.rmdir_list))
 # print('del list:\n{}'.format(bdo.delete_list))

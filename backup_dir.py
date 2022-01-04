@@ -39,13 +39,25 @@ class backup_dirs:
             '$RECYCLE.BIN',
             'System Volume Information']
         
-        self.copy_list = []
-        self.delete_list = []
-        self.rmdir_list = []
-        cur_dir = ''
-        self.check_dir(cur_dir)
-        self.process_changes()
-        self.print_bkup_state()
+        self.ignore_files = [
+            '.is_backup',
+            '.is_backup2']
+        
+    
+    def backup(self):
+        
+        from_files = os.listdir(self.from_dir)
+        if '.is_backup' in from_files:
+            print('ERROR: from directory is a backup\n   Delete the ".is_backup" file if this is incorrect')
+        else:
+            
+            self.copy_list = []
+            self.delete_list = []
+            self.rmdir_list = []
+            cur_dir = ''
+            self.check_dir(cur_dir)
+            self.process_changes()
+            self.print_bkup_state()
         
         
     def process_changes(self):
@@ -53,7 +65,8 @@ class backup_dirs:
         for dr in tqdm.tqdm(self.rmdir_list,desc='Removing directories: '):
             self.rmdirs(dr)
         for file in tqdm.tqdm(self.delete_list,desc='Removing files: '):
-            os.remove(file)
+            # os.remove(file)
+            self.rmfile(file)
             
         start_time = DT.datetime.now()
         print('\n')
@@ -120,6 +133,9 @@ class backup_dirs:
             
         copy(os.path.join(self.from_dir,'backup_logs',fn),
              os.path.join(self.to_dir,'backup_logs',fn))
+        
+        with open(os.path.join(self.to_dir,'.is_backup'), 'w') as f:
+            f.write('is a backup')
             
         
         
@@ -169,20 +185,27 @@ class backup_dirs:
         return frm_size == to_size
     
     def compare_lists(self,frm,to):
-        in_both = [item for item in frm if (item in to) and (item not in self.ignore_dirs)]
-        in_from_only = [item for item in frm if (item not in to) and (item not in self.ignore_dirs)]
-        in_to_only = [item for item in to if (item not in frm) and (item not in self.ignore_dirs)]
+        in_both = [item for item in frm if (item in to)]
+        in_from_only = [item for item in frm if (item not in to)]
+        in_to_only = [item for item in to if (item not in frm)]
         
         return in_both,in_from_only,in_to_only
         
         
     def list_dir(self,abs_dir):
         lst = os.listdir(abs_dir)
-        files = [item for item in lst if os.path.isfile(os.path.join(abs_dir,item))]
-        dirs = [item for item in lst if os.path.isdir(os.path.join(abs_dir,item))]
+        files = [item for item in lst if os.path.isfile(os.path.join(abs_dir,item)) and (item not in self.ignore_files)]
+        dirs = [item for item in lst if os.path.isdir(os.path.join(abs_dir,item)) and (item not in self.ignore_dirs)]
         return files,dirs
         
-        
+    
+    def rmfile(self,file):
+            
+        try:
+            os.remove(file)
+        except:
+            os.chmod(file,0o777)
+            os.remove(file)
              
     def rmdirs(self,cur_dir):  
         #Display progress
@@ -193,7 +216,7 @@ class backup_dirs:
         #Store the files and subdirectories in separate lists
         new_files = [file for file in dir_list if os.path.isfile(os.path.join(cur_dir,file))]
         for file in new_files:
-            os.remove(os.path.join(cur_dir,file))
+            self.rmfile(os.path.join(cur_dir,file))
         new_dirs = [os.path.join(cur_dir,item) for item in dir_list if os.path.isdir(os.path.join(cur_dir,item))]
         #For each subdirectory, increment the counter and call the rmdirs function
         for new_dir in new_dirs:
