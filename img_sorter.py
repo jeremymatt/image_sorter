@@ -121,6 +121,9 @@ class App:
         #set flag for reviewing duplicate hash values
         self.reviewing_dup_hashes = False
         
+        #Default image information setting
+        self.img_info_display = 2
+        
         #Flag for missing images
         self.img_missing = False
         
@@ -161,6 +164,7 @@ class App:
         self.reset_zoomcycle()
         #Get the list of images in the source directory
         self.get_img_list()
+        
         
     def continue_run(self,event):
         key = event.char
@@ -259,6 +263,8 @@ class App:
     def close_input_and_go(self,dummy=None):
         inpt = self.input_txt.get('1.0', "end-1c")
         
+        prev_img = self.cur_img
+        
         if inpt[0] in ['-','+']:
             try:
                 inpt = int(inpt)
@@ -273,38 +279,12 @@ class App:
                 return
             self.cur_img = min(inpt-1,len(self.img_list)-1)
             
+            
+        self.update_folder_position(self.cur_img-prev_img)
+            
         self.load_new_image()           
           
         self.input_window.destroy()
-        
-        
-        # self.set_keybindings(self.input_window)
-        
-            
-        # #Add a canvas
-        # self.txt_canvas = tk.Canvas(self.input_window,height=1000,width=500)
-        # self.txt_canvas.pack()
-        # #Create a text item of the menu text
-        # self.text_item = self.txt_canvas.create_text(
-        #     25,
-        #     25,
-        #     fill='black',
-        #     font='times 10 bold',
-        #     text=txt,tag='menu_txt',
-        #     anchor=tk.NW)
-        # #Make a bounding box around the text to determine required window size
-        # bbox = self.txt_canvas.bbox(self.text_item)
-        # dim = (bbox[2]-bbox[0]+100,bbox[3]-bbox[1]+100)
-        # #Set the window geometry to the dimensions of the bounding box plus 
-        # #some padding and move the text item to the center of the window
-        # locn = [int(self.screen_width/2-dim[0]/2),int(self.screen_height/2-dim[1]/2)]
-        # self.txt_window.geometry(f'{dim[0]}x{dim[1]}+{locn[0]}+{locn[1]}')
-        # self.txt_canvas.move(self.text_item,25,25)
-        # self.txt_canvas.update()
-        # # self.txt_canvas.tag_raise(self.text_item)
-        # self.txt_window.focus_force()
-        
-        
         
         
     def show_text_window(self,txt,delete_dups=False):
@@ -390,6 +370,10 @@ class App:
             self.show_text_window('COMPLETED\nSearching for images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
             
             self.img_list.sort()
+            
+            
+        #Init folder position variables
+        self.get_folder_pos_and_size()
         
         if self.has_open_image:
             self.close_open_image()
@@ -500,6 +484,7 @@ class App:
         window.bind('<F4>', self.toggle_review_dup_hashes) #Toggle reviewing lists of images with dup hashes
         window.bind('<F5>', self.ask_delete_dup_hashes)    #Delete all duplicate hashes (ask user first)
         window.bind('<F6>', self.ask_empty_current_folder) #Delete all files in current directory (ask user first)
+        window.bind('<F9>', self.toggle_info_text)         #Toggle info displayed on image
         window.bind('<F10>', self.show_input_window)       #Goto specific image number
         window.bind('<F11>', self.toggle_fs)               #toggle full screen
         window.bind("<F12>",self.toggle_rand_order)        #Display images in random order
@@ -527,6 +512,45 @@ class App:
         window.bind('<Motion>',self.motion)                #Track mouse motion
         window.bind('<ButtonPress-1>',self.move_from)      #Store location of start of pan  
         window.bind('<ButtonRelease-1>',self.move_to)      #Store location of end of pan 
+        window.bind('<Shift-Right>',self.next_folder)      #Skip to the next folder
+        window.bind('<Shift-Left>',self.prev_folder)       #Skip to the next folder
+        
+    def toggle_info_text(self,dummy=None):
+        self.img_info_display = (self.img_info_display+1)%4
+    
+    def next_folder(self,dummy=None):
+        files = self.get_folder_pos_and_size()
+        
+        
+        #Update the index
+        self.cur_img += self.num_files_in_folder-self.folder_position
+        #Check for valid image index
+        if self.cur_img >= len(self.img_list):
+            self.cur_img = 0
+        
+        files = self.get_folder_pos_and_size()
+        
+        #Set flag so revised image list will be exported on exit & load the next image
+        self.img_list_updated = True
+        self.close_txt_window()
+        self.load_new_image()
+        
+        
+    def prev_folder(self,dummy=None):
+        files = self.get_folder_pos_and_size()
+        
+        #Update the index
+        self.cur_img -= (self.folder_position+1)
+        #Check for valid image index
+        if self.cur_img < 0:
+            self.cur_img = len(self.img_list)-1
+        
+        files = self.get_folder_pos_and_size()
+        
+        #Set flag so revised image list will be exported on exit & load the next image
+        self.img_list_updated = True
+        self.close_txt_window()
+        self.load_new_image()
         
     def ask_delete_dup_hashes(self,dummy=None):
         self.show_text_window('WARNING:\nAbout to delete images with duplicate hashes\n\nCANNOT BE UNDONE\n\nEnter: Cancel\nAlt+Shift+p: Continue',delete_dups='hashes')
@@ -534,7 +558,6 @@ class App:
     def delete_dup_hashes(self,dummy=None):
         move_ctr = 0
         start_time = time.time()
-        missing_files = []
         num_items = len(self.dup_hashes)
         self.close_open_image()
         for ctr,key in enumerate(self.dup_hashes):
@@ -587,6 +610,29 @@ class App:
         self.show_text_window('WARNING:\nAbout to delete all {} images in\n\n     {}\n\nCANNOT BE UNDONE\n\nEnter: Cancel\nAlt+Shift+p: Continue'.format(len(files),cur_dir),delete_dups='empty_dir')
                 
     def empty_current_folder(self,dummy=None):
+        
+        files = self.get_folder_pos_and_size()
+        
+        
+        for file in files:
+            # #If the file is in the image list, remove it
+            # if file in self.img_list:
+            os.remove(file)
+            self.processed_images += 1
+            self.img_list.remove(file)
+        
+        #Update the index
+        self.cur_img -= self.folder_position
+        #Check for valid image index
+        if self.cur_img >= len(self.img_list):
+            self.cur_img = 0
+        
+        #Set flag so revised image list will be exported on exit & load the next image
+        self.img_list_updated = True
+        self.close_txt_window()
+        self.load_new_image()
+        
+    def get_folder_pos_and_size(self,dummy=None):
         #Find the directory of the current image & all the images in that dir
         file = self.img_list[self.cur_img]
         cur_dir = os.path.split(file)[0]
@@ -597,24 +643,10 @@ class App:
         files.sort()
         #Find the position of the currently viewed image within the current folder
         #for indexing purposes
-        folder_position = files.index(file)
-        for file in files:
-            # #If the file is in the image list, remove it
-            # if file in self.img_list:
-            os.remove(file)
-            self.processed_images += 1
-            self.img_list.remove(file)
+        self.folder_position = files.index(file)
+        self.num_files_in_folder = len(files)
         
-        #Update the index
-        self.cur_img -= folder_position
-        #Check for valid image index
-        if self.cur_img >= len(self.img_list):
-            self.cur_img = 0
-        
-        #Set flag so revised image list will be exported on exit & load the next image
-        self.img_list_updated = True
-        self.close_txt_window()
-        self.load_new_image()
+        return files
         
         
                     
@@ -942,7 +974,7 @@ class App:
                 menu_txt += 'Esc ==> Quit\n'
                 menu_txt += 'Alt+M ==> Toggle this menu\n'
                 menu_txt += 'Ctrl+Z ==> Undo move\n'
-                menu_txt += 'L/R arrows ==> prev/next image\n'
+                menu_txt += 'L/R arrows ==> prev/next image (shift: prev/next folder)\n'
                 menu_txt += 'U/D arrows ==> +/- GIF animation speed\n'
                 menu_txt += 'F1  ==> reload img list from directory\n'
                 menu_txt += 'F2  ==> Recursively remove empty dirs from source\n'
@@ -950,6 +982,7 @@ class App:
                 menu_txt += 'F4  ==> Review duplicate image hashes\n'
                 menu_txt += 'F5  ==> Delete all images with hashes\n'
                 menu_txt += 'F6  ==> Delete all imgs in current directory\n'
+                menu_txt += 'F9  ==> Toggle image info displayed\n'
                 menu_txt += 'F10 ==> Goto specific image number\n'
                 menu_txt += 'F11 ==> toggle full screen\n'
                 menu_txt += 'F12 ==> toggle random display order\n'
@@ -1249,7 +1282,16 @@ class App:
         #Increment the current image index and mod by the number of items
         #in the image list
         self.cur_img = (self.cur_img+step) % len(self.img_list)
+        
+        self.update_folder_position(1)
+        
         self.load_new_image()
+        
+    def update_folder_position(self,increment):
+        self.folder_position += increment
+        if (self.folder_position >= self.num_files_in_folder) or (self.folder_position<0):
+            self.get_folder_pos_and_size()
+        
         
     def load_prev_img(self,dummy=None):
         #Move to the next image
@@ -1274,6 +1316,9 @@ class App:
             self.cur_img -= 1
             if self.cur_img < 0:
                 self.cur_img = len(self.img_list)-1
+                
+                
+        self.update_folder_position(-1)
         self.load_new_image()
         
     def close_open_image(self):
@@ -1711,10 +1756,10 @@ class App:
             self.image = self.canvas.create_image(int(self.img_window_width/2),int(self.img_window_height/2), image=sequence[0],tag='img')
             inputs = (self.canvas,self.img_window,self.image)
             parts = os.path.split(self.img_list[self.cur_img])
-            self.num_in_cur_dir = len([item for item in os.listdir(parts[0]) if os.path.join(parts[0],item) in self.img_list])
-            self.fn = parts[1]
-            #Extract the name of the containing folder from the absolute path
-            self.folder = os.path.split(parts[0])[1]
+            # self.num_in_cur_dir = len([item for item in os.listdir(parts[0]) if os.path.join(parts[0],item) in self.img_list])
+            # self.fn = parts[1]
+            # #Extract the name of the containing folder from the absolute path
+            # self.folder = os.path.split(parts[0])[1]
             self.animate(0,sequence,inputs)
             
         
@@ -1730,94 +1775,81 @@ class App:
         
         #Try to delete existing text from the frame
         try:
-            canvas.delete('ctr_txt')
+            canvas.delete('ctr_txt1')
         except:
-            print('no text to delete')
+            donothing=1
         
-        #Extract the image file name from the absolute path
-        parts = os.path.split(self.img_list[self.cur_img])
-        fn = parts[1]
-        #Extract the name of the containing folder from the absolute path
-        folder = os.path.split(parts[0])[1]
-        #The number of the item in the image list (convert to one-indexing)
-        item = self.cur_img+1
-        #The number of items in the image list
-        num_items = len(self.img_list)
-        #Convert the absolute zoom percentage to a string
-        zoom_perc = '{}%'.format(int(self.abs_ratio*100))
-        #If displaying in random order, display a flag and set the height of
-        #the text
-        if self.rand_order:
-            r_flag = '\nR'
-            r_height = 8
-        else:
-            r_flag = ''
-            r_height = 0
+        if self.img_info_display > 0:
+            #Extract the image file name from the absolute path
+            parts = os.path.split(self.img_list[self.cur_img])
+            self.fn = parts[1]
+            #Extract the name of the containing folder from the absolute path
+            if self.img_info_display in [1,2]:
+                self.folder = os.path.split(parts[0])[1]
+            else:
+                self.folder = parts[0]
+            #The number of the item in the image list (convert to one-indexing)
+            item = self.cur_img+1
+            #The number of items in the image list
+            num_items = len(self.img_list)
+            #Convert the absolute zoom percentage to a string
+            zoom_perc = '{}%'.format(int(self.abs_ratio*100))
+            #If displaying in random order, display a flag and set the height of
+            #the text
+            if self.rand_order:
+                r_flag = '\nR'
+                r_height = 8
+            else:
+                r_flag = ''
+                r_height = 0
+                
+            if len(self.move_events)>0:
+                u_flag = '\n#undos:{}'.format(len(self.move_events))
+                u_height = 8
+            else:
+                u_flag = ''
+                u_height = 0
+            #Build the info text string including the folder, file name, item numbers, 
+            #the zoom cycle and percentage, and the random flag
+            if self.reviewing_dup_hashes:
+                hash_txt = "\n[hash dup:{}/{}]".format(self.hash_ctr+1,len(self.dup_hashes))
+                h_height = 8
+            else:
+                hash_txt = ''
+                h_height = 0
             
-        if len(self.move_events)>0:
-            u_flag = '\n#undos:{}'.format(len(self.move_events))
-            u_height = 8
-        else:
-            u_flag = ''
-            u_height = 0
-        #Build the info text string including the folder, file name, item numbers, 
-        #the zoom cycle and percentage, and the random flag
-        if self.reviewing_dup_hashes:
-            hash_txt = "\n[hash dup:{}/{}]".format(self.hash_ctr+1,len(self.dup_hashes))
-            h_height = 8
-        else:
-            hash_txt = ''
-            h_height = 0
             
-        # counter_text = '{}/{} ({}:{}) ({}/{}) \nItems in cur dir: {}{}{}{}'.format(
-        #     self.folder,
-        #     self.fn,
-        #     self.zoomcycle,
-        #     zoom_perc,
-        #     item,
-        #     num_items,
-        #     self.num_in_cur_dir,
-        #     hash_txt,
-        #     u_flag,
-        #     r_flag)
-        
-        
-        # height = 20+r_height+u_height+h_height
-        # #Add the info text over a black rectangle to the canvas
-        # text_item = canvas.create_text(5,height,fill='lightblue',anchor='nw',font='times 10 bold',text=counter_text,tag='ctr_txt')
-        # bbox = canvas.bbox(text_item)
-        # rect_item = canvas.create_rectangle(bbox,fill='black',tag='ctr_txt')
-        # canvas.tag_raise(text_item,rect_item)
-        
-        
-        counter_text1 = '{}/{}'.format(
-            self.folder,
-            self.fn)
-        
-        counter_text2 = 'Zoom:{}({})\nImage:{}/{} \nItems in cur dir: {}{}{}{}'.format(
-            self.zoomcycle,
-            zoom_perc,
-            item,
-            num_items,
-            self.num_in_cur_dir,
-            hash_txt,
-            u_flag,
-            r_flag)
-        
-        
-        height = 20+r_height+u_height+h_height
-        #Add the info text over a black rectangle to the canvas
-        text_item1 = canvas.create_text(5,5,fill='lightblue',anchor='nw',font='times 10 bold',text=counter_text1,tag='ctr_txt1')
-        bbox = canvas.bbox(text_item1)
-        rect_item1 = canvas.create_rectangle(bbox,fill='black',tag='ctr_txt1')
-        
-        if settings.show_statistics:
-            text_item2 = canvas.create_text(5,20,fill='lightblue',anchor='nw',font='times 10 bold',text=counter_text2,tag='ctr_txt1')
-            bbox = canvas.bbox(text_item2)
-            rect_item2 = canvas.create_rectangle(bbox,fill='black',tag='ctr_txt1')
+            counter_text1 = '{}/{}'.format(
+                self.folder,
+                self.fn)
             
-        canvas.tag_raise(text_item1,rect_item1)
-        canvas.tag_raise(text_item2,rect_item2)
+            counter_text2 = 'Zoom:{}({})\nOverall Pos: {}\{} \nFolder Pos: {}\{}{}{}{}'.format(
+                self.zoomcycle,
+                zoom_perc,
+                item,
+                num_items,
+                self.folder_position+1,
+                self.num_files_in_folder,
+                hash_txt,
+                u_flag,
+                r_flag)
+            
+            
+            height = 20+r_height+u_height+h_height
+            #Add the info text over a black rectangle to the canvas
+            text_item1 = canvas.create_text(5,5,fill='lightblue',anchor='nw',font='times 10 bold',text=counter_text1,tag='ctr_txt1')
+            bbox = canvas.bbox(text_item1)
+            rect_item1 = canvas.create_rectangle(bbox,fill='black',tag='ctr_txt1')
+            
+                
+            canvas.tag_raise(text_item1,rect_item1)
+            
+            
+            if settings.show_statistics & (self.img_info_display in [2,3]):
+                text_item2 = canvas.create_text(5,20,fill='lightblue',anchor='nw',font='times 10 bold',text=counter_text2,tag='ctr_txt1')
+                bbox = canvas.bbox(text_item2)
+                rect_item2 = canvas.create_rectangle(bbox,fill='black',tag='ctr_txt1')
+                canvas.tag_raise(text_item2,rect_item2)
         
         
         #After the delay specified by the GIF animation frame rate parameter
