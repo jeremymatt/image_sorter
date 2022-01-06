@@ -55,24 +55,26 @@ class App:
         for n in range(-1, self.MIN_ZOOM-1, -1):
             self.mux[n] = round(self.mux[n+1] * 0.9, 5)
         
-        if source_dir == "None":
-            #Use the default source directory from the settings file
-            self.source_dir = settings.source_dir
-        else:
-            #Use the user-supplied source directory
-            self.source_dir = source_dir
+        # if source_dir == "None":
+        #     #Use the default source directory from the settings file
+        #     self.source_dir = settings.source_dir
+        # else:
+        #     #Use the user-supplied source directory
+        #     self.source_dir = source_dir
+        self.source_dir = source_dir
         
         #Set the temp trash directory and make if it doesn't exist
         self.trash_dest = os.path.join(settings.dest_root,'.temp_trash')
         if not os.path.isdir(self.trash_dest):
             os.makedirs(self.trash_dest)
         
-        if dest_root == "None":
-            #Use destination root specified in the settings file
-            self.dest_root = settings.dest_root
-        else:
-            #Use user-supplied destination direectory
-            self.dest_root = dest_root
+        # if dest_root == "None":
+        #     #Use destination root specified in the settings file
+        #     self.dest_root = settings.dest_root
+        # else:
+        #     #Use user-supplied destination direectory
+        #     self.dest_root = dest_root
+        self.dest_root = dest_root
             
         #Extract the keystroke dictionary from settings and prepend the destination
         #root to each path
@@ -345,22 +347,34 @@ class App:
             self.img_list = []
             ctr = 0
             while len(dirs_to_process)>0:
+                
+                # print('point1')
                 #Pop directory from list to process
                 cur_dir = dirs_to_process.pop()
                         
+                # print('point2')
                 #Display progress
                 ctr +=1
                 txt = '{} dirs checked ({} dirs remaining).  Found {} images'.format(ctr,len(dirs_to_process),len(self.img_list))
                 self.show_text_window('Searching for images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+                
+                # print('point3')
                 #list of all files in the directory
                 new_files = [file for file in os.listdir(cur_dir) if os.path.isfile(os.path.join(cur_dir,file))]
+                
+                # print('point4')
                 #Add absolute path to the file names
                 new_files = [os.path.join(cur_dir,file) for file in new_files]
+                
+                # print('point5')
                 #Check if file is an image file
                 new_files = [file for file in new_files if imghdr.what(file) != None]
+                # print('point6')
                 #Add new images to the image list
                 self.img_list.extend(new_files)
                 
+                
+                # print('point7')
                 #Recursively include subdirectories
                 if settings.include_sub_dirs:
                     #Add subdirectories in the current directory to the directories to check
@@ -1949,15 +1963,39 @@ def main():
     #Pull the source and destination directories from the argument parser
     source_dir = args.source_dir
     dest_root = args.dest_root
+    
+    run_program = True
+    
+    
+    if source_dir == "None":
+        #Use the default source directory from the settings file
+        source_dir = settings.source_dir
+    
+    if dest_root == "None":
+        #Use destination root specified in the settings file
+        dest_root = settings.dest_root
+            
+    
+    if not os.path.isdir(source_dir):
+        print('ERROR: Invalid Source Directory, quitting\n    {}'.format(source_dir))
+        run_program = False
+    elif not os.path.isdir(dest_root):
+        print('Warning: Destination directory does not exist, will attempt to create on first move\n    {}'.format(dest_root))
+        answer = ''
+        while answer.lower() not in ['y','n']:
+            answer = input('    Continue? (y/n)')
+        if answer == 'n':
+            run_program = False
 
-    #Init a tkinter application
-    root = tk.Tk()
-    #Make the root window full screen (reduces blinking when switching between windows
-    #but makes it harder to view console outputs)
-    root.attributes('-fullscreen', True)
-    #Initialize the application object and start the run
-    app = App(root,source_dir,dest_root)
-    root.mainloop()
+    if run_program:
+        #Init a tkinter application
+        root = tk.Tk()
+        #Make the root window full screen (reduces blinking when switching between windows
+        #but makes it harder to view console outputs)
+        root.attributes('-fullscreen', True)
+        #Initialize the application object and start the run
+        app = App(root,source_dir,dest_root)
+        root.mainloop()
 
 
 
