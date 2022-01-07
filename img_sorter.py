@@ -79,8 +79,8 @@ class App:
         #Extract the keystroke dictionary from settings and prepend the destination
         #root to each path
         self.move_dict = settings.move_dict
-        for key in self.move_dict.keys():
-            self.move_dict[key] = os.path.join(self.dest_root,self.move_dict[key])
+        # for key in self.move_dict.keys():
+        #     self.move_dict[key] = os.path.join(self.dest_root,self.move_dict[key])
         
         #Flag to indicate that image display hasn't started yet
         self.displaying_images = False
@@ -952,7 +952,8 @@ class App:
             #Reload the image to reset zoom
             self.reload_img()
             #Store the destination directory based on the key pressed
-            self.dest_dir = self.move_dict[key]
+            # self.dest_dir = self.move_dict[key]
+            self.dest_dir = os.path.join(self.dest_root,self.move_dict[key])
             #If the destination directory doesn't exist, create it
             if not os.path.isdir(self.dest_dir):
                 os.makedirs(self.dest_dir)
@@ -1045,7 +1046,8 @@ class App:
                 #Build list of destination folders and corresponding keys
                 menu_txt += '\nPress key to move to subdirectory in {}\n'.format(settings.dest_root)
                 for key in self.move_dict.keys():
-                    menu_txt += '   {} ==> {}\n'.format(key,os.path.split(settings.move_dict[key])[1])
+                    # menu_txt += '   {} ==> {}\n'.format(key,os.path.split(settings.move_dict[key])[1])
+                    menu_txt += '   {} ==> {}\n'.format(key,settings.move_dict[key])
             
             return menu_txt
             
