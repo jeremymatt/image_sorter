@@ -32,6 +32,8 @@ for dr in dirs_to_copy:
     sdr = sub_dirs[0]
     files_list = []
     known_list_fn = os.path.join(source_dir_root,dr,settings.store_table_locn,'.copied_files')
+    if not os.path.isdir(os.path.join(source_dir_root,dr,settings.store_table_locn)):
+        os.makedirs(os.path.join(source_dir_root,dr,settings.store_table_locn))
     if os.path.isfile(known_list_fn):
         with open(known_list_fn,'r') as f:
             known_files = f.readlines()
@@ -40,12 +42,22 @@ for dr in dirs_to_copy:
         known_files = []
         
     with open(known_list_fn,'a') as f:
-            
+         
         for sdr in sub_dirs:
+            print('\n')
             src_dir_start = os.path.join(source_dir_root,dr,sdr)
-            dst_dir_start = os.path.join(dest_dir_root,dr,sdr)
+            dst_dir_start = os.path.join(dest_dir_root,dr)
+            if not os.path.isdir(dst_dir_start):
+                os.makedirs(dst_dir_start)
+            if not os.path.isdir(os.path.join(dst_dir_start,'Images')):
+                os.makedirs(os.path.join(dst_dir_start,'Images'))
+            if not os.path.isdir(os.path.join(dst_dir_start,'Videos')):
+                os.makedirs(os.path.join(dst_dir_start,'Videos'))
             prev_str_len = 0
             CR.copy_dirs(src_dir_start,dst_dir_start,files_list,known_files,f,prev_str_len)
+            
+    # files = [file for file in os.listdir(dst_dir_start) if os.path.isdir(os.path.join(dst_dir_start,file))]
+    # images
         
         
         
