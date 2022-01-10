@@ -366,6 +366,9 @@ class App:
                 #Add absolute path to the file names
                 new_files = [os.path.join(cur_dir,file) for file in new_files]
                 
+                #Check if file extension is a common video type for speed
+                new_files = [file for file in new_files if file.split('.')[-1] not in settings.video_extensions]
+                
                 # print('point5')
                 #Check if file is an image file
                 new_files = [file for file in new_files if imghdr.what(file) != None]
