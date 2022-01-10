@@ -23,7 +23,14 @@ def copy_dirs(src_dir,dst_dir,files_list,known_files,f,prev_str_len):
         string = '{}: {}'.format(str(len(files_list)).zfill(4),src_file)
         print('\r{}{}'.format(string,' '*(prev_str_len-len(string))),end="")
         prev_str_len = len(string)
-        dst_file = os.path.join(dst_dir,file)
+        
+        if file.endswith('jpg'):
+            dst_file = os.path.join(dst_dir,'Images',file)
+        elif file.endswith('mp4'):
+            dst_file = os.path.join(dst_dir,'Videos',file)
+        else:
+            dst_file = os.path.join(dst_dir,file)
+            
         move(src_file,dst_file)
         with open(src_file,'w') as tmp_file:
             tmp_file.write('')
@@ -35,9 +42,19 @@ def copy_dirs(src_dir,dst_dir,files_list,known_files,f,prev_str_len):
     while len(source_dirs)>0:
         dr = source_dirs.pop()
         src_dir_new = os.path.join(src_dir,dr)
-        dst_dir_new = os.path.join(dst_dir,dr)
+        # dst_dir_new = os.path.join(dst_dir,dr)
+        dst_dir_new = dst_dir
         
         if not os.path.isdir(dst_dir_new):
             os.makedirs(dst_dir_new)
         
         copy_dirs(src_dir_new,dst_dir_new,files_list,known_files,f,prev_str_len)
+        
+        
+# dir_list = [item for item in os.listdir(source_dir) if os.path.isdir(os.path.join(source_dir,item))]
+# for root in dir_list:
+    
+    
+# def collect_files(source_dir,dst_dir):
+
+
