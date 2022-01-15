@@ -501,6 +501,7 @@ class App:
         window.bind('<F4>', self.toggle_review_dup_hashes) #Toggle reviewing lists of images with dup hashes
         window.bind('<F5>', self.ask_delete_dup_hashes)    #Delete all duplicate hashes (ask user first)
         window.bind('<F6>', self.ask_empty_current_folder) #Delete all files in current directory (ask user first)
+        window.bind('<F7>', self.remove_missing)           #Remove missing files until non-missing file is found
         window.bind('<F8>', self.remove_all_missing)       #Check image list for missing files
         window.bind('<F9>', self.toggle_info_text)         #Toggle info displayed on image
         window.bind('<F10>', self.show_input_window)       #Goto specific image number
@@ -747,6 +748,32 @@ class App:
         self.reload_img()
         
                
+    def remove_missing(self,dummy=None):
+        missing_files = []
+        num_items = len(self.img_list)
+        self.close_open_image()
+        ctr = 0
+        file = self.img_list[self.cur_img]
+        while not os.path.isfile(file):
+            missing_files.append(file)
+            ctr +=1
+            file = self.img_list[self.cur_img+ctr]
+            #Build the text display string and show the text window to update
+            #the user
+            txt = 'Checked {}/{})'.format(ctr,len(self.img_list))
+            self.show_text_window('Checking file list for missing images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+            #Calculate the hash of the current file
+            
+        for file in missing_files:
+            self.img_list.remove(file)
+            
+        self.cur_img = min(len(self.img_list)-1,self.cur_img)
+        
+        txt = 'Found {} missing files ({} remaining)'.format(ctr,len(self.img_list))
+        self.show_text_window('COMPLETED:\nChecking for missing images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+        self.get_folder_pos_and_size()
+        self.reload_img()
+                 
     def remove_all_missing(self,dummy=None):
         #Record the start time
         start_time = time.time()
@@ -770,7 +797,7 @@ class App:
         self.cur_img = min(len(self.img_list)-1,self.cur_img)
         
         txt = 'Checked {} entries, found {} missing files ({} remaining)'.format(num_items,len(missing_files),len(self.img_list))
-        self.show_text_window('COMPLETED:\nChecking file hashes for images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+        self.show_text_window('COMPLETED:\nChecking for missing images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
         self.get_folder_pos_and_size()
         self.reload_img()
         
@@ -1039,6 +1066,7 @@ class App:
                 menu_txt += 'F4  ==> Review duplicate image hashes\n'
                 menu_txt += 'F5  ==> Delete all images with hashes\n'
                 menu_txt += 'F6  ==> Delete all imgs in current directory\n'
+                menu_txt += 'F7  ==> Check image list for missing images until non-missing is found\n'
                 menu_txt += 'F8  ==> Check image list for missing images\n'
                 menu_txt += 'F9  ==> Toggle image info displayed\n'
                 menu_txt += 'F10 ==> Goto specific image number\n'
@@ -1804,7 +1832,7 @@ class App:
             self.canvas.tag_raise(text_item)
         #If the current file doesn't exist, inform the user
         elif sequence == False:
-            error_text = 'Image does not exist\n\n   Press F1 to re-check the source directory\n   Press F8 to check image list for missing files\n   Press any move key to remove image from list'
+            error_text = 'Image does not exist\n\n   Press F1 to re-check the source directory\n   Press F7 remove missing until non-missing img is found\n   Press F8 to check image list for missing files\n   Press any move key to remove image from list'
             text_item = self.canvas.create_text(
                 int(self.img_window_width/2),
                 int(self.img_window_height/2),
