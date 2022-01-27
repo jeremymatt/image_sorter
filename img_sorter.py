@@ -31,6 +31,10 @@ import imghdr
 
 class App:
     def __init__(self, parent,source_dir,dest_root):
+        
+        self.remove_ctr = 0
+        
+        
         #Init the parent canvas
         self.start_time = time.time()
         self.parent = parent
@@ -575,6 +579,10 @@ class App:
         self.show_text_window('WARNING:\nAbout to delete images with duplicate hashes\n\nCANNOT BE UNDONE\n\nEnter: Cancel\nAlt+Shift+p: Continue',delete_dups='hashes')
         
     def delete_dup_hashes(self,dummy=None):
+        if self.reviewing_dup_hashes:
+            self.toggle_review_dup_hashes()
+        
+        
         move_ctr = 0
         start_time = time.time()
         num_items = len(self.dup_hashes)
@@ -614,6 +622,7 @@ class App:
         
         #Set the hash dict to none and move the hash pickle
         self.hash_dict = None
+        self.dup_hashes = None
         move(os.path.join(self.source_dir,'.pickled_hashes'),os.path.join(self.trash_dest,'.pickled_hashes'))
         txt = '{} images moved'.format(move_ctr)
         self.show_text_window('COMPLETD:\nMoving duplicate image hashes to temp trash\n ***WILL BE EMPTIED ON EXIT***\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
@@ -775,6 +784,56 @@ class App:
         self.reload_img()
                  
     def remove_all_missing(self,dummy=None):
+        
+        dest_file = None
+        if self.reviewing_dup_hashes:
+            self.remove_all_missing_hashes()
+            self.next_dup_hash("no-increment")
+        else:
+            self.remove_all_missing_files()
+            
+    def remove_all_missing_hashes(self): #Record the start time
+        start_time = time.time()
+        missing_files = []
+        num_items = len(self.dup_hashes)
+        self.close_open_image()
+                
+        hashes_removed = 0
+        hsh_list = cp.deepcopy(self.dup_hashes)
+        for ctr,hsh in enumerate(hsh_list):
+            time_remaining = self.calc_time_remaining(start_time,ctr,num_items)
+            #Build the text display string and show the text window to update
+            #the user
+            txt = 'Checked dup hashes of {}/{} ({} remaining)'.format(ctr,len(hsh_list),time_remaining)
+            self.show_text_window('Checking file list for missing images in:\n     {}\n\n{}\n\n'.format(self.source_dir,txt))
+            self.img_list = cp.deepcopy(self.hash_dict[hsh])
+            self.img_list = self.hash_dict[hsh]
+            for file in self.img_list:
+                if not os.path.isfile(file):
+                    self.img_list.remove(file)                
+                    
+                    #remove the current image from the backed-up global image list 
+                    self.img_list_bkup.remove(file)
+                    #Confirm that the current image value doesn't exceed the max
+                    #index
+                    self.cur_img_bkup %= len(self.img_list_bkup)
+                    missing_files.append(file)
+        
+            
+            if len(self.img_list) <= 1:
+                #Remove the current hash from the list of duplicate hashes
+                #and go to the next duplicate hash
+                self.dup_hashes.remove(hsh)
+                hashes_removed += 1
+        
+        
+        self.remove_ctr +=1
+            
+        txt = 'Checked {} duplicate hashes, found {} that are no longer dups ({} duplicate hashes remaining)'.format(num_items,hashes_removed,len(self.dup_hashes))
+        self.show_text_window('COMPLETED:\nChecking for missing images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+        
+          
+    def remove_all_missing_files(self):
         #Record the start time
         start_time = time.time()
         missing_files = []
@@ -1266,24 +1325,28 @@ class App:
         
          
         if self.reviewing_dup_hashes:
-            #remove the current image from the backed-up global image list 
-            self.img_list_bkup.remove(file)
-            #Confirm that the current image value doesn't exceed the max
-            #index
-            self.cur_img_bkup %= len(self.img_list_bkup)
-            if self.dest_root == self.source_dir:
-                #If source&dest are the same, add the moved file path
-                #to the backed up global image list
-                self.img_list_bkup.append(dest_file)
-                self.img_list_bkup.sort()
-            if len(self.img_list) == 0:
-                #Remove the current hash from the list of duplicate hashes
-                #and go to the next duplicate hash
-                self.dup_hashes.remove(self.dup_hashes[self.hash_ctr])
-                self.next_dup_hash("no-increment")
+            self.update_dup_hashes(file,dest_file)
         else:
             files = self.get_folder_pos_and_size()
             self.load_new_image()
+            
+    def update_dup_hashes(self,file,dest_file,removing_missing = False):
+        #remove the current image from the backed-up global image list 
+        self.img_list_bkup.remove(file)
+        #Confirm that the current image value doesn't exceed the max
+        #index
+        self.cur_img_bkup %= len(self.img_list_bkup)
+        if self.dest_root == self.source_dir:
+            #If source&dest are the same, add the moved file path
+            #to the backed up global image list
+            self.img_list_bkup.append(dest_file)
+            self.img_list_bkup.sort()
+        if len(self.img_list) == 0:
+            #Remove the current hash from the list of duplicate hashes
+            #and go to the next duplicate hash
+            self.dup_hashes.remove(self.dup_hashes[self.hash_ctr])
+            self.next_dup_hash("no-increment")
+        
         
         
     def undo(self,dummy=None):
@@ -1832,7 +1895,7 @@ class App:
             self.canvas.tag_raise(text_item)
         #If the current file doesn't exist, inform the user
         elif sequence == False:
-            error_text = 'Image does not exist\n\n   Press F1 to re-check the source directory\n   Press F7 remove missing until non-missing img is found\n   Press F8 to check image list for missing files\n   Press any move key to remove image from list'
+            error_text = 'Image does not exist\n   {}\n\n   Press F1 to re-check the source directory\n   Press F7 remove missing until non-missing img is found\n   Press F8 to check image list for missing files\n   Press any move key to remove image from list'.format(self.img_list[self.cur_img])
             text_item = self.canvas.create_text(
                 int(self.img_window_width/2),
                 int(self.img_window_height/2),
