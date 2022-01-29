@@ -83,6 +83,7 @@ class App:
         #Extract the keystroke dictionary from settings and prepend the destination
         #root to each path
         self.move_dict = settings.move_dict
+        self.keep_mode_move_dict = settings.keep_mode_move_dict
         # for key in self.move_dict.keys():
         #     self.move_dict[key] = os.path.join(self.dest_root,self.move_dict[key])
         
@@ -124,6 +125,8 @@ class App:
         self.keep_new = False
         self.keep_existing = False
         self.processing_duplicates = False
+        #Set flag to control sorting mode
+        self.keep_mode = False
         #set flag for reviewing duplicate hash values
         self.reviewing_dup_hashes = False
         
@@ -522,9 +525,10 @@ class App:
         window.bind('<Tab>', self.toggle_fit_to_canvas)    #zoom/shrink to canvas
         window.bind("<MouseWheel>",self.zoomer)            #mouse wheel to increase/decrease zoom
         window.bind("<Control-z>",self.undo)               #Undo file move
+        window.bind("<Control-r>",self.reload_img)         #Reset zoom, animation speed etc. to defaults
+        window.bind("<Control-K>",self.toggle_keep_mode)   #Sort images relative to the original containing folder
         window.bind("<Control-q>",self.quit_app)           #Quit app
         window.bind("<Escape>",self.quit_app)              #Quit app
-        window.bind("<Control-r>",self.reload_img)         #Reset zoom, animation speed etc. to defaults
         window.bind('<Alt-m>',self.toggle_menu)            #Display controls menu
         window.bind('<KeyRelease>',self.keyup)             #Monitor key presses (check for file moves)
         window.bind('1',self.set_keep_new_flag)            #dup processing: keep source_dir file
@@ -537,7 +541,12 @@ class App:
         window.bind('<ButtonRelease-1>',self.move_to)      #Store location of end of pan 
         window.bind('<Shift-Right>',self.next_folder)      #Skip to the next folder
         window.bind('<Shift-Left>',self.prev_folder)       #Skip to the next folder
+    
         
+    def toggle_keep_mode(self,dummy=None):
+        self.keep_mode = bool(self.keep_mode*-1+1)
+        
+    
     def toggle_info_text(self,dummy=None):
         self.img_info_display = (self.img_info_display+1)%4
     
@@ -764,6 +773,7 @@ class App:
         ctr = 0
         file = self.img_list[self.cur_img]
         while not os.path.isfile(file):
+            self.img_list_updated = True
             missing_files.append(file)
             ctr +=1
             file = self.img_list[self.cur_img+ctr]
@@ -810,6 +820,7 @@ class App:
             self.img_list = self.hash_dict[hsh]
             for file in self.img_list:
                 if not os.path.isfile(file):
+                    self.img_list_updated = True
                     self.img_list.remove(file)                
                     
                     #remove the current image from the backed-up global image list 
@@ -848,6 +859,7 @@ class App:
             #Calculate the hash of the current file
             if not os.path.isfile(file):
                 missing_files.append(file)
+                self.img_list_updated = True
            
             
         for file in missing_files:
@@ -1037,12 +1049,24 @@ class App:
         #Function to track key releases for moving files
         #Store the key that was released
         key = event.char
-        if (key in self.move_dict.keys()) and not self.processing_duplicates:
+        
+        valid_move = False
+        
+        if self.keep_mode:
+            if key in self.keep_mode_move_dict.keys():
+                valid_move = True
+                img_root = os.path.split(self.img_list[self.cur_img])[0]
+                self.dest_dir = os.path.join(img_root,self.keep_mode_move_dict[key])
+                
+        elif (key in self.move_dict.keys()) and not self.processing_duplicates:
+            valid_move = True
             #Reload the image to reset zoom
             self.reload_img()
             #Store the destination directory based on the key pressed
             # self.dest_dir = self.move_dict[key]
             self.dest_dir = os.path.join(self.dest_root,self.move_dict[key])
+            
+        if valid_move:
             #If the destination directory doesn't exist, create it
             if not os.path.isdir(self.dest_dir):
                 os.makedirs(self.dest_dir)
@@ -1115,10 +1139,17 @@ class App:
                 #program control settings
                 menu_txt = ''
                 menu_txt += 'Esc ==> Quit\n'
-                menu_txt += 'Alt+M ==> Toggle this menu\n'
-                menu_txt += 'Ctrl+Z ==> Undo move\n'
                 menu_txt += 'L/R arrows ==> prev/next image (shift: prev/next folder)\n'
-                menu_txt += 'U/D arrows ==> +/- GIF animation speed\n'
+                menu_txt += '=/- arrows ==> +/- GIF animation speed\n'
+                menu_txt += 'U/D arrows ==> rotate image\n'
+                menu_txt += 'Page U/D arrows ==> prev/next set of duplicate hashes\n'
+                menu_txt += 'TAB ==> toggle fit to canvas\n'
+                menu_txt += 'Mouse Wheel ==> increase/decrease zoom\n'
+                menu_txt += 'Ctrl+Shift+k ==> toggle relative store mode\n'
+                menu_txt += 'Alt+m ==> Toggle this menu\n'
+                menu_txt += 'Ctrl+q ==> quit\n'
+                menu_txt += 'Ctrl+r ==> reload image\n'
+                menu_txt += 'Ctrl+z ==> undo file move\n'
                 menu_txt += 'F1  ==> reload img list from directory\n'
                 menu_txt += 'F2  ==> Recursively remove empty dirs from source\n'
                 menu_txt += 'F3  ==> Check for duplicate image hashes\n'
@@ -1131,13 +1162,20 @@ class App:
                 menu_txt += 'F10 ==> Goto specific image number\n'
                 menu_txt += 'F11 ==> toggle full screen\n'
                 menu_txt += 'F12 ==> toggle random display order\n'
-                menu_txt += 'TAB ==> toggle fit to canvas\n'
-                menu_txt += 'Ctrl+R ==> reload image\n'
                 #Build list of destination folders and corresponding keys
-                menu_txt += '\nPress key to move to subdirectory in {}\n'.format(settings.dest_root)
-                for key in self.move_dict.keys():
+                
+                
+                if self.keep_mode:
+                    move_dict = self.keep_mode_move_dict
+                    menu_txt += '\nPress key to move to subdirectory image\'s original directory\n'.format(settings.dest_root)
+                else:
+                    move_dict = self.move_dict
+                    #Build list of destination folders and corresponding keys
+                    menu_txt += '\nPress key to move to subdirectory in {}\n'.format(settings.dest_root)
+                
+                for key in move_dict.keys():
                     # menu_txt += '   {} ==> {}\n'.format(key,os.path.split(settings.move_dict[key])[1])
-                    menu_txt += '   {} ==> {}\n'.format(key,settings.move_dict[key])
+                    menu_txt += '   {} ==> {}\n'.format(key,move_dict[key])
             
             return menu_txt
             
@@ -1964,21 +2002,28 @@ class App:
             else:
                 u_flag = ''
                 u_height = 0
-            #Build the info text string including the folder, file name, item numbers, 
-            #the zoom cycle and percentage, and the random flag
+            #Hash review text
             if self.reviewing_dup_hashes:
                 hash_txt = "\n[hash dup:{}/{}]".format(self.hash_ctr+1,len(self.dup_hashes))
                 h_height = 8
             else:
                 hash_txt = ''
                 h_height = 0
+            #Keep mode flag
+            if self.keep_mode:
+                km_txt = "\nKeep Mode"
+                km_height = 8
+            else:
+                km_txt = ''
+                km_height = 0
+                
             
             
             counter_text1 = '{}/{}'.format(
                 self.folder,
                 self.fn)
             
-            counter_text2 = 'Zoom:{}({})\nOverall Pos: {}\{} \nFolder Pos: {}\{}{}{}{}'.format(
+            counter_text2 = 'Zoom:{}({})\nOverall Pos: {}\{} \nFolder Pos: {}\{}{}{}{}{}'.format(
                 self.zoomcycle,
                 zoom_perc,
                 item,
@@ -1987,10 +2032,11 @@ class App:
                 self.num_files_in_folder,
                 hash_txt,
                 u_flag,
-                r_flag)
+                r_flag,
+                km_txt)
             
             
-            height = 20+r_height+u_height+h_height
+            height = 20+r_height+u_height+h_height+km_height
             #Add the info text over a black rectangle to the canvas
             text_item1 = canvas.create_text(5,5,fill='lightblue',anchor='nw',font='times 10 bold',text=counter_text1,tag='ctr_txt1')
             bbox = canvas.bbox(text_item1)
