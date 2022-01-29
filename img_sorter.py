@@ -647,7 +647,7 @@ class App:
         self.show_text_window('WARNING:\nAbout to delete all {} images in\n\n     {}\n\nCANNOT BE UNDONE\n\nEnter: Cancel\nAlt+Shift+p: Continue'.format(len(files),cur_dir),delete_dups='empty_dir')
                 
     def empty_current_folder(self,dummy=None):
-        
+        self.move_events = []
         files = self.get_folder_pos_and_size()
         
         
