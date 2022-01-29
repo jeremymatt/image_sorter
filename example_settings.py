@@ -31,3 +31,10 @@ move_dict = {
     'f':'fish',
     'F':r'fish\salmon'
     }
+
+
+#Save to path relative to the image's original directory
+keep_mode_move_dict = {
+    'k':r'keep',
+    'p':r'keep\private',
+    }
