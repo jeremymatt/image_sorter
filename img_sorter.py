@@ -1214,7 +1214,6 @@ class App:
             self.img_list.remove(file)
             self.cur_img %= len(self.img_list)
             self.init_image()
-            self.img_missing = False
             return
         
         #Split off the filename
@@ -1716,6 +1715,7 @@ class App:
             
             #Build the sequence of frames in the image and return the sequence
             sequence = [ImageTk.PhotoImage(img) for img in img_frames]
+            self.img_missing = False
         else:
             sequence = False
             self.img_missing = True
