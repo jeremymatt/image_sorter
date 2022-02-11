@@ -10,7 +10,8 @@ from argparse import ArgumentParser
 
 
 import tkinter as tk
-from PIL import Image, ImageTk, ImageSequence, ImageOps
+from PIL import Image, ImageTk, ImageSequence, ImageOps, ImageFile, ImageEnhance
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 import os
 import copy as cp
 import random
@@ -58,6 +59,23 @@ class App:
 
         for n in range(-1, self.MIN_ZOOM-1, -1):
             self.mux[n] = round(self.mux[n+1] * 0.9, 5)
+            
+            
+        # Initialize the brightness table
+        self.brightness_mux = {0 : 1.0}
+        for n in range(1,self.MAX_ZOOM+1,1):
+            self.brightness_mux[n] = round(self.brightness_mux[n-1] * 1.1, 5)
+
+        for n in range(-1, self.MIN_ZOOM-1, -1):
+            self.brightness_mux[n] = round(self.brightness_mux[n+1] * 0.9, 5)
+            
+        # Initialize the contrast table
+        self.contrast_mux = {0 : 1.0}
+        for n in range(1,self.MAX_ZOOM+1,1):
+            self.contrast_mux[n] = round(self.contrast_mux[n-1] * 1.1, 5)
+
+        for n in range(-1, self.MIN_ZOOM-1, -1):
+            self.contrast_mux[n] = round(self.contrast_mux[n+1] * 0.9, 5)
         
         # if source_dir == "None":
         #     #Use the default source directory from the settings file
@@ -222,11 +240,14 @@ class App:
         canvas.tag_raise(text_item)
         self.settings_window.focus_force()
         
-    def reset_zoomcycle(self):
+    def reset_zoomcycle(self,bright_contrast_reset=True):
         #Set the gif frame rate to default
         self.delay = 20
         #Set the zoomcycle position to default
         self.zoomcycle = 0
+        if bright_contrast_reset:
+            self.brightcycle = 0
+            self.contrastcycle = 0
         #Reset the variables tracking movement of the bounding box to zero
         self.bbox_dx = 0
         self.bbox_dy = 0
@@ -522,6 +543,10 @@ class App:
         window.bind('=', self.decrease_delay)              #Speed GIF animation
         window.bind('<Down>', self.rotate_ccw)             #Rotate the image clockwise
         window.bind('<Up>', self.rotate_cw)                #Rotate the image counterclockwise
+        window.bind('<Control-Down>', self.contrast_dn)    #Decrease contrast
+        window.bind('<Control-Up>', self.contrast_up)      #Increase contrast
+        window.bind('<Alt-Down>', self.brightness_dn)      #Decrease brightness
+        window.bind('<Alt-Up>', self.brightness_up)        #Increase brightness
         window.bind('<Tab>', self.toggle_fit_to_canvas)    #zoom/shrink to canvas
         window.bind("<MouseWheel>",self.zoomer)            #mouse wheel to increase/decrease zoom
         window.bind("<Control-z>",self.undo)               #Undo file move
@@ -541,6 +566,55 @@ class App:
         window.bind('<ButtonRelease-1>',self.move_to)      #Store location of end of pan 
         window.bind('<Shift-Right>',self.next_folder)      #Skip to the next folder
         window.bind('<Shift-Left>',self.prev_folder)       #Skip to the next folder
+    
+    
+    
+    def contrast_dn(self,dummy=None):
+        #Decrement the contrast step
+        if self.contrastcycle > self.MIN_ZOOM:
+            self.contrastcycle -= 1
+        else:
+            print('Min contrast!')
+            return
+        
+        #Display the image
+        self.init_image()
+        
+        
+    def contrast_up(self,dummy=None):
+        #Increment the contrast step
+        if self.contrastcycle < self.MAX_ZOOM:
+            self.contrastcycle += 1
+        else:
+            print('Max contrast!')
+            return
+        
+        #Display the image
+        self.init_image()
+    
+        
+    def brightness_dn(self,dummy=None):
+        #Decrement the brightness step
+        if self.brightcycle > self.MIN_ZOOM:
+            self.brightcycle -= 1
+        else:
+            print('Min brightness!')
+            return
+        
+        #Display the image
+        self.init_image()
+        
+        
+    def brightness_up(self,dummy=None):
+        #Increment the brightness step
+        if self.brightcycle < self.MAX_ZOOM:
+            self.brightcycle += 1
+        else:
+            print('Max brightness!')
+            return
+        
+        #Display the image
+        self.init_image()
     
         
     def toggle_keep_mode(self,dummy=None):
@@ -772,8 +846,10 @@ class App:
         self.close_open_image()
         ctr = 0
         file = self.img_list[self.cur_img]
+        #Check files until a non-missing file is found
         while not os.path.isfile(file):
             self.img_list_updated = True
+            #Add the file to the list of the missing
             missing_files.append(file)
             ctr +=1
             file = self.img_list[self.cur_img+ctr]
@@ -783,13 +859,16 @@ class App:
             self.show_text_window('Checking file list for missing images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
             #Calculate the hash of the current file
             
+        #Remove the missing ifles
         for file in missing_files:
             self.img_list.remove(file)
             
+        #Update the image index
         self.cur_img = min(len(self.img_list)-1,self.cur_img)
         
         txt = 'Found {} missing files ({} remaining)'.format(ctr,len(self.img_list))
         self.show_text_window('COMPLETED:\nChecking for missing images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+        #Get the number of items in the current folder & the position in the folder
         self.get_folder_pos_and_size()
         self.reload_img()
                  
@@ -856,19 +935,21 @@ class App:
             #the user
             txt = 'Checked {}/{} ({} remaining)'.format(ctr,len(self.img_list),time_remaining)
             self.show_text_window('Checking file list for missing images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
-            #Calculate the hash of the current file
+            #Check if the file is missing or not
             if not os.path.isfile(file):
                 missing_files.append(file)
                 self.img_list_updated = True
            
-            
+        #Remove the missing files
         for file in missing_files:
             self.img_list.remove(file)
             
+        #Update the image index
         self.cur_img = min(len(self.img_list)-1,self.cur_img)
         
         txt = 'Checked {} entries, found {} missing files ({} remaining)'.format(num_items,len(missing_files),len(self.img_list))
         self.show_text_window('COMPLETED:\nChecking for missing images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
+        #Get the number of items in the current folder & the position in the folder
         self.get_folder_pos_and_size()
         self.reload_img()
         
@@ -979,7 +1060,7 @@ class App:
         self.img_height = cp.deepcopy(self.img_width)
         self.img_width = temp
         #reset the zoom and bounding box
-        self.reset_zoomcycle()
+        self.reset_zoomcycle(False)
         #Display the image
         self.init_image()
         
@@ -1001,7 +1082,7 @@ class App:
         self.img_height = cp.deepcopy(self.img_width)
         self.img_width = temp
         #reset the zoom and bounding box
-        self.reset_zoomcycle()
+        self.reset_zoomcycle(False)
         #Display the image
         self.init_image()
         
@@ -1075,6 +1156,7 @@ class App:
         
     def quit_app(self,dummy=None):
         
+        #Calculate working statistics and print to console
         end_time = time.time()
         elapsed_seconds = end_time-self.start_time
         hrs,minutes,seconds = self.sec_to_hr_min_sec(elapsed_seconds)
@@ -1142,7 +1224,8 @@ class App:
                 menu_txt += 'L/R arrows ==> prev/next image (shift: prev/next folder)\n'
                 menu_txt += '=/- arrows ==> +/- GIF animation speed\n'
                 menu_txt += 'U/D arrows ==> rotate image\n'
-                menu_txt += 'Page U/D arrows ==> prev/next set of duplicate hashes\n'
+                menu_txt += 'Ctrl/Alt U/D arrows ==> increase/decrease brightness/contrast\n'
+                menu_txt += 'Page U/D ==> prev/next set of duplicate hashes\n'
                 menu_txt += 'TAB ==> toggle fit to canvas\n'
                 menu_txt += 'Mouse Wheel ==> increase/decrease zoom\n'
                 menu_txt += 'Ctrl+Shift+k ==> toggle relative store mode\n'
@@ -1163,6 +1246,7 @@ class App:
                 menu_txt += 'F11 ==> toggle full screen\n'
                 menu_txt += 'F12 ==> toggle random display order\n'
                 #Build list of destination folders and corresponding keys
+                
                 
                 
                 if self.keep_mode:
@@ -1358,8 +1442,6 @@ class App:
         #If the last image was removed, set the image index to the new last image
         if self.cur_img >= len(self.img_list):
             self.cur_img = len(self.img_list)-1
-            
-        
          
         if self.reviewing_dup_hashes:
             self.update_dup_hashes(file,dest_file)
@@ -1391,6 +1473,7 @@ class App:
         moved_files,self.cur_img,self.img_list,self.cur_img_bkup,self.img_list_bkup,hash_dict_change,self.hash_ctr,self.reviewing_dup_hashes = self.move_events.pop()
         
         if hash_dict_change != None:
+            #If there were changes to the hash dict, restore dict to previous state
             key,file = hash_dict_change
             self.hash_dict[key].append(file)
             self.hash_dict[key].sort()
@@ -1426,10 +1509,12 @@ class App:
     def toggle_fs(self,dummy=None):
         #Toggle full screen mode
         if self.full_screen:
+            #Set fullscreen to false and set window dimensions to default
             self.full_screen = False
             self.img_window_width = self.default_window_width
             self.img_window_height = self.default_window_height
         else:
+            #Set fullscreen to True and set window dimensions to screen dims
             self.full_screen = True
             self.img_window_width = self.screen_width
             self.img_window_height = self.screen_height
@@ -1475,12 +1560,15 @@ class App:
         #in the image list
         self.cur_img = (self.cur_img+step) % len(self.img_list)
         
+        #Update the img number relative to the number of images in the directory
         self.update_folder_position(1)
         
         self.load_new_image()
         
     def update_folder_position(self,increment):
+        #Increment the position
         self.folder_position += increment
+        #If the new position doesn't make sense, recheck the actual position and size
         if (self.folder_position >= self.num_files_in_folder) or (self.folder_position<0):
             self.get_folder_pos_and_size()
         
@@ -1682,6 +1770,14 @@ class App:
             if (self.crop_width<self.img_width) or (self.crop_height<self.img_height):
                 #Crop the image to the coordinates of the crop box
                 thumbnail = thumbnail.crop(self.crop_bbox)
+                
+            if self.brightcycle != 0:
+                enhancer = ImageEnhance.Brightness(thumbnail)
+                thumbnail = enhancer.enhance(self.brightness_mux[self.brightcycle])
+                
+            if self.contrastcycle != 0:
+                enhancer = ImageEnhance.Contrast(thumbnail)
+                thumbnail = enhancer.enhance(self.contrast_mux[self.contrastcycle])
             
             #Resize the cropped image to the bounding box width and height
             thumbnail = thumbnail.resize((self.bbox_width,self.bbox_height),Image.LANCZOS)
@@ -1949,10 +2045,6 @@ class App:
             self.image = self.canvas.create_image(int(self.img_window_width/2),int(self.img_window_height/2), image=sequence[0],tag='img')
             inputs = (self.canvas,self.img_window,self.image)
             parts = os.path.split(self.img_list[self.cur_img])
-            # self.num_in_cur_dir = len([item for item in os.listdir(parts[0]) if os.path.join(parts[0],item) in self.img_list])
-            # self.fn = parts[1]
-            # #Extract the name of the containing folder from the absolute path
-            # self.folder = os.path.split(parts[0])[1]
             self.animate(0,sequence,inputs)
             
         
@@ -1991,31 +2083,32 @@ class App:
             #the text
             if self.rand_order:
                 r_flag = '\nR'
-                r_height = 8
             else:
                 r_flag = ''
-                r_height = 0
                 
+            #If there are items in the undo queue, display the number of items
             if len(self.move_events)>0:
                 u_flag = '\n#undos:{}'.format(len(self.move_events))
-                u_height = 8
             else:
                 u_flag = ''
-                u_height = 0
+                
             #Hash review text
             if self.reviewing_dup_hashes:
                 hash_txt = "\n[hash dup:{}/{}]".format(self.hash_ctr+1,len(self.dup_hashes))
-                h_height = 8
             else:
                 hash_txt = ''
-                h_height = 0
+                
             #Keep mode flag
             if self.keep_mode:
                 km_txt = "\nKeep Mode"
-                km_height = 8
             else:
                 km_txt = ''
-                km_height = 0
+                
+            #brightness/contrast MUX cycle
+            if (self.brightcycle != 0) | (self.contrastcycle != 0):
+                brco_txt = "\nBr/Co: {}/{}".format(self.brightcycle,self.contrastcycle)
+            else:
+                brco_txt = ''
                 
             
             
@@ -2023,7 +2116,7 @@ class App:
                 self.folder,
                 self.fn)
             
-            counter_text2 = 'Zoom:{}({})\nOverall Pos: {}\{} \nFolder Pos: {}\{}{}{}{}{}'.format(
+            counter_text2 = 'Zoom:{}({})\nOverall Pos: {}\{} \nFolder Pos: {}\{}{}{}{}{}{}'.format(
                 self.zoomcycle,
                 zoom_perc,
                 item,
@@ -2031,12 +2124,12 @@ class App:
                 self.folder_position+1,
                 self.num_files_in_folder,
                 hash_txt,
+                brco_txt,
                 u_flag,
                 r_flag,
                 km_txt)
             
             
-            height = 20+r_height+u_height+h_height+km_height
             #Add the info text over a black rectangle to the canvas
             text_item1 = canvas.create_text(5,5,fill='lightblue',anchor='nw',font='times 10 bold',text=counter_text1,tag='ctr_txt1')
             bbox = canvas.bbox(text_item1)
