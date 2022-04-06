@@ -395,6 +395,7 @@ class App:
             self.read_file_list()
             #Indicate that the existing file list was read from file
             self.img_list_updated = False
+            print("{} files in image list".format(len(self.img_list)))
         else:
             #Indicate that the existing file list was updated from the directory
             self.img_list_updated = True
