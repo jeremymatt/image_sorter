@@ -24,7 +24,7 @@ import pickle as pkl
 try:
     import settings
 except:
-    import temp_settings as settings
+    import example_settings as settings
 
 from shutil import move
 
@@ -115,7 +115,7 @@ class App:
         self.source_dir = source_dir
         
         #Set the temp trash directory and make if it doesn't exist
-        self.trash_dest = os.path.join(settings.dest_root,'.temp_trash')
+        self.trash_dest = os.path.join(source_dir,'.temp_trash')
         if not os.path.isdir(self.trash_dest):
             os.makedirs(self.trash_dest)
         
@@ -395,6 +395,7 @@ class App:
             self.read_file_list()
             #Indicate that the existing file list was read from file
             self.img_list_updated = False
+            print("{} files in image list".format(len(self.img_list)))
         else:
             #Indicate that the existing file list was updated from the directory
             self.img_list_updated = True

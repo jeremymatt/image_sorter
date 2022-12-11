@@ -25,9 +25,9 @@ import numpy as np
 def get_date_taken(path):
     return Image.open(path)._getexif()[36867]
 
-file_limit = 1000
+file_limit = 2000
 
-root = r'P:test3'
+root = r'P:\img\test8\amateur\beach_nudist_exhibitionist_flasher'
 rename_to_path = True
 rename_to_date = False
 
