@@ -89,6 +89,8 @@ ctr = 0
 for cur_dir in tqdm.tqdm(dir_list,desc='hashing files'):
     files = {os.path.join(cur_dir,item) for item in os.listdir(cur_dir) if (os.path.join(cur_dir,item) not in dir_list) & (not item.endswith('hsh_txt_file'))}
     
+    file_names = [os.path.split(file)[1] for file in files]
+    
     cur_dir_hashes = []
     
     hsh_fn = os.path.join(cur_dir,'.hsh_txt_file')
@@ -102,9 +104,10 @@ for cur_dir in tqdm.tqdm(dir_list,desc='hashing files'):
             
         for line in lines:
             file_hash,file = line.strip().split('(*)(*)')
-            if file in files:
-                HF.add_hash_to_dict(hash_dict, file_hash, file)
-                cur_dir_hashes.append((file_hash,file))
+            path,filename = os.path.split(file)
+            if filename in files:
+                HF.add_hash_to_dict(hash_dict, file_hash, os.path.join(cur_dir,filename))
+                cur_dir_hashes.append((file_hash,os.path.join(cur_dir,filename)))
                 files.remove(file)
                 master_hash_set.add(file_hash)
             
