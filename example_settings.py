@@ -3,7 +3,11 @@
 Created on Thu Oct 28 19:53:29 2021
 
 @author: jmatt
+
+NOTE: Rename this file to "settings.py" to use
 """
+
+
 import os
 
 cd = os.getcwd()
@@ -21,6 +25,23 @@ include_sub_dirs = True
 random_display_order = False
 max_allowed_undo = 'all' #integer >=0 or "all"
 max_allowed_undo = 100 #integer >=0 or "all"
+show_statistics = True
+
+video_extensions = [
+    'mp4',
+    'avi',
+    'wmv',
+    'mov',
+    'flv',
+    'mpg',
+    'mpeg',
+    'mpe',
+    'mpv',
+    'ogg',
+    'm4p',
+    'm4v',
+    'qt',
+    'swf']
 
 #Defines the keystrokes used to move images.  For example, pressing period will
 #move the image to <dest_root>\trash\<image_filename>
