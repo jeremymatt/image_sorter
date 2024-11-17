@@ -15,11 +15,11 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 import os
 import copy as cp
 import random
+import inspect
 import hashlib
 import time
 import pickle as pkl
-import image_object as IO
-import gc
+
 
 try:
     import settings
@@ -77,6 +77,35 @@ class App:
         self.screen_width = self.parent.winfo_screenwidth()
         self.screen_height = self.parent.winfo_screenheight()
         
+        #Set the max/min steps in the zoom cycle
+        self.MAX_ZOOM = 15
+        self.MIN_ZOOM = -15
+        
+        # Initialize the scaling/zoom table
+        self.mux = {0 : 1.0}
+        for n in range(1,self.MAX_ZOOM+1,1):
+            self.mux[n] = round(self.mux[n-1] * 1.1, 5)
+
+        for n in range(-1, self.MIN_ZOOM-1, -1):
+            self.mux[n] = round(self.mux[n+1] * 0.9, 5)
+            
+            
+        # Initialize the brightness table
+        self.brightness_mux = {0 : 1.0}
+        for n in range(1,self.MAX_ZOOM+1,1):
+            self.brightness_mux[n] = round(self.brightness_mux[n-1] * 1.1, 5)
+
+        for n in range(-1, self.MIN_ZOOM-1, -1):
+            self.brightness_mux[n] = round(self.brightness_mux[n+1] * 0.9, 5)
+            
+        # Initialize the contrast table
+        self.contrast_mux = {0 : 1.0}
+        for n in range(1,self.MAX_ZOOM+1,1):
+            self.contrast_mux[n] = round(self.contrast_mux[n-1] * 1.1, 5)
+
+        for n in range(-1, self.MIN_ZOOM-1, -1):
+            self.contrast_mux[n] = round(self.contrast_mux[n+1] * 0.9, 5)
+        
         # if source_dir == "None":
         #     #Use the default source directory from the settings file
         #     self.source_dir = settings.source_dir
@@ -112,6 +141,7 @@ class App:
         self.show_settings_window()
         
     def generate_settings(self):
+        
         #Init the history list of previously viewed images for random view order
         self.previous_images = []
         #Set the index into the image list
@@ -120,8 +150,8 @@ class App:
         self.rand_order = settings.random_display_order
         #Load zoom/shrink to canvas setting
         self.fit_to_canvas = settings.fit_to_canvas
-        #Init a variable that will hold the current image
-        self.current_image = None
+        #Set new image flag (indicate that image frames need to be reloaded)
+        self.new_image = True
         #Default delay for the gif frame rate
         self.delay = 20
         #Set the default non-full screen width height
@@ -156,8 +186,6 @@ class App:
         #set mouse position to 0,0 if mouse hasn't moved
         self.mouse_x = 0
         self.mouse_y = 0
-        #Variable to check if image is being dragged
-        self.panning_image = False
         
         #Load saved hashes if available.  Otherwise init empty variables
         #as flags and to avoid errors when saving state for undo
@@ -188,8 +216,11 @@ class App:
             self.img_window_width = self.default_window_width
             self.img_window_height = self.default_window_height
         
+        #Reset zoom and bounding box settings
+        self.reset_zoomcycle()
         #Get the list of images in the source directory
         self.get_img_list()
+        
         
     def continue_run(self,event):
         key = event.char
@@ -202,6 +233,7 @@ class App:
             self.generate_settings()
             #Flag to indicate that the program has continued
             self.displaying_images = True
+        
         
     def show_settings_window(self,dummy=None):
         #Init the menu window 
@@ -237,6 +269,22 @@ class App:
         canvas.tag_raise(text_item)
         self.settings_window.focus_force()
         
+    def reset_zoomcycle(self,bright_contrast_reset=True):
+        #Set the gif frame rate to default
+        self.delay = 20
+        #Set the zoomcycle position to default
+        self.zoomcycle = 0
+        if bright_contrast_reset:
+            self.brightcycle = 0
+            self.contrastcycle = 0
+        #Reset the variables tracking movement of the bounding box to zero
+        self.bbox_dx = 0
+        self.bbox_dy = 0
+        #Set the anchor to the upper left of the image and reset the bounding
+        #box flag to false
+        self.bbox_anchor = [0,0]
+        self.bbox = False
+        
     def close_txt_window(self,dummy=None):
         #If a text window is open, close it and reload the image to bring
         #it back to focus
@@ -253,6 +301,7 @@ class App:
         self.input_window.bind('<Return>',self.close_input_and_go)      #Close text window if one is open
         self.input_window.bind("<Control-q>",self.quit_app)           #Quit app
         self.input_window.bind("<Escape>",self.quit_app)              #Quit app
+        
         
         self.input_txt = tk.Text(self.input_window,height=7,width=100)
         
@@ -400,16 +449,12 @@ class App:
             
         #Init folder position variables
         self.get_folder_pos_and_size()
-
-
         
-        if isinstance(self.current_image,type(None)):
-            # self.init_first_image()
-            self.current_image = IO.IMAGE(self.get_img_path(),self.img_window_width,self.img_window_height,self.fit_to_canvas)
-            self.open_img_window(self.current_image.sequence)
-        else:
-            self.load_new_image()
+        if self.has_open_image:
+            self.close_open_image()
             self.init_image()
+        else:
+            self.init_first_image()
     
     def remove_empty_dirs(self,dummy = None):
         #Init the number of dirs and removed dirs counters
@@ -419,6 +464,7 @@ class App:
         self.rmdirs(self.source_dir)
         self.show_text_window('COMPLETED\nRemoving empty directories from:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,self.display_txt))
        
+                    
     def rmdirs(self,cur_dir):  
         #Display progress
         self.display_txt = '{} checked, {} removed'.format(self.num_dirs,self.num_removed)
@@ -444,6 +490,8 @@ class App:
             os.rmdir(cur_dir)
             self.num_removed += 1
             
+                    
+            
     def read_file_list(self):
         #Load the image list from file
         file_list_fn = os.path.join(self.source_dir,'.img_files_list')
@@ -460,7 +508,8 @@ class App:
         with open(file_list_fn,'w', encoding='utf-8') as file:
             for fn in self.img_list:
                 file.write('{}\n'.format(fn))
-
+                
+                
     def reload_img_list(self,dummy=None):
         #Force check of source directory for image files
         file_list_fn = os.path.join(self.source_dir,'.img_files_list')
@@ -548,42 +597,66 @@ class App:
         window.bind('<Shift-Right>',self.next_folder)      #Skip to the next folder
         window.bind('<Shift-Left>',self.prev_folder)       #Skip to the next folder
     
-    def rotate_cw(self,dummy=None):
-        self.current_image.rotate(90)
-        self.init_image()
-
-    def rotate_ccw(self,dummy=None):
-        self.current_image.rotate(-90)
-        self.init_image()
+    
     
     def contrast_dn(self,dummy=None):
-        #Update contrast and show image
-        self.current_image.adjust_contrast(-1)
+        #Decrement the contrast step
+        if self.contrastcycle > self.MIN_ZOOM:
+            self.contrastcycle -= 1
+        else:
+            print('Min contrast!')
+            return
+        
+        #Display the image
         self.init_image()
+        
         
     def contrast_up(self,dummy=None):
-        #Update contrast and show image
-        self.current_image.adjust_contrast(1)
+        #Increment the contrast step
+        if self.contrastcycle < self.MAX_ZOOM:
+            self.contrastcycle += 1
+        else:
+            print('Max contrast!')
+            return
+        
+        #Display the image
         self.init_image()
     
+        
     def brightness_dn(self,dummy=None):
-        #Update brightness and show image
-        self.current_image.adjust_brightness(-1)
+        #Decrement the brightness step
+        if self.brightcycle > self.MIN_ZOOM:
+            self.brightcycle -= 1
+        else:
+            print('Min brightness!')
+            return
+        
+        #Display the image
         self.init_image()
         
+        
     def brightness_up(self,dummy=None):
-        #Update brightness and show image
-        self.current_image.adjust_brightness(+1)
+        #Increment the brightness step
+        if self.brightcycle < self.MAX_ZOOM:
+            self.brightcycle += 1
+        else:
+            print('Max brightness!')
+            return
+        
+        #Display the image
         self.init_image()
     
+        
     def toggle_keep_mode(self,dummy=None):
         self.keep_mode = bool(self.keep_mode*-1+1)
         
+    
     def toggle_info_text(self,dummy=None):
         self.img_info_display = (self.img_info_display+1)%4
-
+    
     def next_folder(self,dummy=None):
         self.get_folder_pos_and_size()
+        
         
         #Update the index
         self.cur_img += self.num_files_in_folder-self.folder_position
@@ -597,7 +670,8 @@ class App:
         self.img_list_updated = True
         self.close_txt_window()
         self.load_new_image()
-
+        
+        
     def prev_folder(self,dummy=None):
         self.get_folder_pos_and_size()
         
@@ -621,10 +695,11 @@ class App:
         if self.reviewing_dup_hashes:
             self.toggle_review_dup_hashes()
         
+        
         move_ctr = 0
         start_time = time.time()
         num_items = len(self.dup_hashes)
-        self.close_image(self.current_image)
+        self.close_open_image()
         for ctr,key in enumerate(self.dup_hashes):
             #Calculate the time remaining to completion & update display
             time_remaining = self.calc_time_remaining(start_time,ctr,num_items)
@@ -722,6 +797,8 @@ class App:
         
         return files
         
+        
+                    
     def calc_time_remaining(self,start_time,ctr,num_items):
         #Check how much time has elapsed
         delta_time = time.time()-start_time
@@ -746,7 +823,8 @@ class App:
         minutes %= 60
         
         return hrs,minutes,seconds
-    
+        
+               
     def check_file_hashes(self,dummy=None):
         #Init the hash dict and list of dup hashes
         self.hash_dict = {}
@@ -755,7 +833,7 @@ class App:
         start_time = time.time()
         missing_files = []
         num_items = len(self.img_list)
-        self.close_image(self.current_image)
+        self.close_open_image()
         for ctr,file in enumerate(self.img_list):
             time_remaining = self.calc_time_remaining(start_time,ctr,num_items)
             #Build the text display string and show the text window to update
@@ -791,10 +869,11 @@ class App:
         self.show_text_window('COMPLETED:\nChecking file hashes for images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
         self.reload_img()
         
+               
     def remove_missing(self,dummy=None):
         missing_files = []
         num_items = len(self.img_list)
-        self.close_image(self.current_image)
+        self.close_open_image()
         ctr = 0
         file = self.img_list[self.cur_img]
         #Check files until a non-missing file is found
@@ -836,7 +915,7 @@ class App:
         start_time = time.time()
         missing_files = []
         num_items = len(self.dup_hashes)
-        self.close_image(self.current_image)
+        self.close_open_image()
                 
         hashes_removed = 0
         hsh_list = cp.deepcopy(self.dup_hashes)
@@ -867,17 +946,19 @@ class App:
                 self.dup_hashes.remove(hsh)
                 hashes_removed += 1
         
+        
         self.remove_ctr +=1
             
         txt = 'Checked {} duplicate hashes, found {} that are no longer dups ({} duplicate hashes remaining)'.format(num_items,hashes_removed,len(self.dup_hashes))
         self.show_text_window('COMPLETED:\nChecking for missing images in:\n     {}\n\n{}\n\nEnter to close'.format(self.source_dir,txt))
         
+          
     def remove_all_missing_files(self):
         #Record the start time
         start_time = time.time()
         missing_files = []
         num_items = len(self.img_list)
-        self.close_image(self.current_image)
+        self.close_open_image()
         for ctr,file in enumerate(self.img_list):
             time_remaining = self.calc_time_remaining(start_time,ctr,num_items)
             #Build the text display string and show the text window to update
@@ -901,6 +982,7 @@ class App:
         #Get the number of items in the current folder & the position in the folder
         self.get_folder_pos_and_size()
         self.reload_img()
+        
         
     def toggle_review_dup_hashes(self,dummy=None):
         if self.reviewing_dup_hashes:
@@ -959,6 +1041,16 @@ class App:
             self.cur_img = 0
             self.load_new_image()
             
+    def load_new_image(self):
+        #Set the new image flag
+        self.new_image = True
+        #Close the PIL open image file, reset the zoom cycle and initialize
+        #the next image
+        self.close_open_image()
+        self.reset_zoomcycle()
+        self.init_image()
+            
+        
     def set_keep_new_flag(self,dummy=None):
         #Set flag to indicate that the user wants to keep the file from the 
         #source directory
@@ -979,6 +1071,52 @@ class App:
             self.keep_both = True
             self.move_file()
         
+        
+    def rotate_cw(self,dummy=None):
+        #Increment the rotation by 90 degrees
+        self.rotation += 90
+        #Store the sign of the rotation direction for use after the mod
+        if self.rotation == 0:
+            sign = 1
+        else:
+            sign = self.rotation/abs(self.rotation)
+        #Restrict the rotation to -360:360
+        self.rotation %= sign*360
+        #convert to integer
+        self.rotation = int(self.rotation)
+        
+        #Swap the height and the width dimensions of the image
+        temp = cp.deepcopy(self.img_height)
+        self.img_height = cp.deepcopy(self.img_width)
+        self.img_width = temp
+        #reset the zoom and bounding box
+        self.reset_zoomcycle(False)
+        #Display the image
+        self.init_image()
+        
+    def rotate_ccw(self,dummy=None):
+        #Decrement the rotation by 90 degrees
+        self.rotation -= 90
+        #Store the sign of the rotation direction for use after the mod
+        if self.rotation == 0:
+            sign = 1
+        else:
+            sign = self.rotation/abs(self.rotation)
+        #Restrict the rotation to -360:360
+        self.rotation %= sign*360
+        #convert to integer
+        self.rotation = int(self.rotation)
+        
+        #Swap the height and the width dimensions of the image
+        temp = cp.deepcopy(self.img_height)
+        self.img_height = cp.deepcopy(self.img_width)
+        self.img_width = temp
+        #reset the zoom and bounding box
+        self.reset_zoomcycle(False)
+        #Display the image
+        self.init_image()
+        
+        
     def toggle_rand_order(self,dummy=None):
         #display the images in the image list sequentially or in random order
         if self.rand_order:
@@ -988,25 +1126,27 @@ class App:
         else:
             self.rand_order = True
         
+    
     def motion(self,event):
         #Track motion of the mouse
         self.mouse_x,self.mouse_y = event.x,event.y
-        if self.panning_image:
-            dx = event.x-self.start_x
-            self.start_x = event.x
-            dy = event.y-self.start_y
-            self.start_y = event.y
-            self.current_image.update_bbox_pan(dx,dy)
-            self.init_image()
         
     def move_from(self,event):
         #Store starting point of image pan
         self.start_x = event.x
         self.start_y = event.y
-        self.panning_image = True
         
     def move_to(self,event):
-        self.panning_image = False
+        #Store end point of image pan
+        end_x = event.x
+        end_y = event.y
+        
+        #Calculate how far the bounding box moved
+        self.bbox_dx = end_x-self.start_x
+        self.bbox_dy = end_y-self.start_y
+        #Update the bounding box after pan and display image
+        self.update_bbox_pan()
+        self.init_image()
         
     def get_img_path(self):
         #If there are no images in the list, return None, otherwise return the
@@ -1095,6 +1235,7 @@ class App:
             self.show_menu = True
             self.show_menu_window()
             
+            
     def gen_menutext(self):
             if self.processing_duplicates:
                 #Menu controls when processing dup image files
@@ -1135,6 +1276,8 @@ class App:
                 menu_txt += 'F11 ==> toggle full screen\n'
                 menu_txt += 'F12 ==> toggle random display order\n'
                 #Build list of destination folders and corresponding keys
+                
+                
                 
                 if self.keep_mode:
                     move_dict = self.keep_mode_move_dict
@@ -1229,7 +1372,7 @@ class App:
                         #close the compare window
                         self.close_img_compare_window()
                         #Close the PIL image file
-                        self.close_image(self.current_image)
+                        self.close_open_image()
                         #Generate the absolute path to the destination
                         dest_file = os.path.join(self.dest_dir,self.dest_fn)
                         #Store the move in the move history
@@ -1244,7 +1387,7 @@ class App:
                     #Close the compare window
                     self.close_img_compare_window()
                     #Close the PIL image file
-                    self.close_image(self.current_image)
+                    self.close_open_image()
                     
                     #Move the file in the source directory to the temporary
                     #trash direcetory
@@ -1262,7 +1405,7 @@ class App:
                     #Close the compare window
                     self.close_img_compare_window()
                     #Close the PIL image file
-                    self.close_image(self.current_image)
+                    self.close_open_image()
                     
                     #Move the file in the destination directory to the temporary
                     #trash direcetory
@@ -1286,13 +1429,14 @@ class App:
             #directory, store the move history, & update the image
             #list
             #Close the PIL image file
-            self.close_image(self.current_image)
+            self.close_open_image()
             dest_file = os.path.join(self.dest_dir,self.dest_fn)
             moved_files = [(file,dest_file)]
                       
             move(file,dest_file)
             self.update_img_list(moved_files,file,dest_file)
             
+      
     def update_img_list(self,moved_files,file,dest_file):
         self.processed_images += 1
         if settings.max_allowed_undo != 0:
@@ -1352,6 +1496,8 @@ class App:
             self.dup_hashes.remove(self.dup_hashes[self.hash_ctr])
             self.next_dup_hash("no-increment")
         
+        
+        
     def undo(self,dummy=None):
         #Pop the previous state
         moved_files,self.cur_img,self.img_list,self.cur_img_bkup,self.img_list_bkup,hash_dict_change,self.hash_ctr,self.reviewing_dup_hashes = self.move_events.pop()
@@ -1374,9 +1520,21 @@ class App:
         self.load_new_image()
         
     def zoomer(self,event):
-        if self.current_image.update_zoom(event,self.mouse_x,self.mouse_y):
-            #Display the zoomed image
-            self.init_image()
+        #Increment or decrement the zoom step based on the mouse wheel
+        #movement
+        if (event.delta > 0 and self.zoomcycle < self.MAX_ZOOM):
+            self.zoomcycle += 1
+        elif (event.delta < 0 and self.zoomcycle > self.MIN_ZOOM):
+            self.zoomcycle -= 1
+        else:
+            print('Max/Min zoom reached!')
+            return
+        
+        #Update the bounding box
+        self.update_bbox_zoom()
+        #Display the zoomed image
+        self.init_image()
+
         
     def toggle_fs(self,dummy=None):
         #Toggle full screen mode
@@ -1390,23 +1548,17 @@ class App:
             self.full_screen = True
             self.img_window_width = self.screen_width
             self.img_window_height = self.screen_height
+        self.reset_zoomcycle()
         
-        self.current_image.img_window_width = self.img_window_width
-        self.current_image.img_window_height = self.img_window_height
-        self.current_image.reset_zoomcycle()
-        self.current_image.gen_sequence()
         self.init_image()
         
     def toggle_fit_to_canvas(self,dummy=None):
         #Toggle zoom/shrink to fit canvas
         if self.fit_to_canvas:
             self.fit_to_canvas = False
-            self.current_image.fit_to_canvas = False
         else:
             self.fit_to_canvas = True
-            self.current_image.fit_to_canvas = True
-        self.current_image.reset_zoomcycle()
-        self.current_image.gen_sequence()
+        self.reset_zoomcycle()
         self.init_image()
             
     def increase_delay(self,dummy=None):
@@ -1419,11 +1571,14 @@ class App:
         if self.delay <= 0:
             self.delay = 5
         
+        
     def load_next_img(self,dummy=None):
         #Move to the next image
         #If there is a duplicate compare window open, close it and reset the 
         #compare flags
         self.close_img_compare_window()
+        #Reset zoom
+        self.reset_zoomcycle()
         #If the display is in random order, generate a random step size and add
         #the current image to the view history list
         if self.rand_order:
@@ -1446,6 +1601,7 @@ class App:
         #If the new position doesn't make sense, recheck the actual position and size
         if (self.folder_position >= self.num_files_in_folder) or (self.folder_position<0):
             self.get_folder_pos_and_size()
+        
         
     def load_prev_img(self,dummy=None):
         #Move to the next image
@@ -1471,31 +1627,226 @@ class App:
             if self.cur_img < 0:
                 self.cur_img = len(self.img_list)-1
                 
+                
         self.update_folder_position(-1)
         self.load_new_image()
-
-    def load_new_image(self):
-        #Close the PIL open image file, reset the zoom cycle and initialize
-        #the next image
-        if not isinstance(self.current_image,type(None)):
-            self.close_image(self.current_image)
-        self.current_image = IO.IMAGE(self.get_img_path(),self.img_window_width,self.img_window_height,self.fit_to_canvas)
-        self.init_image()
         
-    def close_image(self, image_obj):
+    def close_open_image(self):
         #If an image file was successfully loaded, close it
-        if image_obj.has_open_image:
+        if self.has_open_image:
+            self.has_open_image = False
+            self.new_image = True
             self.img_window.destroy()
-            image_obj.close()
-        del image_obj
-        gc.collect()
+            self.open_image.close()
         
     def reload_img(self,dummy=None):
         #Reset the image display parameters and re-display the current image
         self.delay = 20
-        self.current_image.reset_zoomcycle()
-        self.load_new_image()
+        self.reset_zoomcycle()
         self.init_image()
+        
+    def init_bbox(self):
+        #indicate that bbox exists
+        self.bbox = True
+        #Set the crop box coordinates
+        self.crop_bbox = [0,0,self.img_width,self.img_height]
+        #Set the initial bbox anchor at the upper left of the image
+        self.bbox_anchor = [0,0]
+        #Set the bounding box width and height to the image dimensions
+        self.bbox_width = self.new_img_width
+        self.bbox_height = self.new_img_height
+        
+        #Find the width of the crop box
+        self.crop_width = self.crop_bbox[2] - self.crop_bbox[0]
+        self.crop_height = self.crop_bbox[3] - self.crop_bbox[1]
+        
+        
+    def update_bbox_pan(self):
+        #Update the viewable area after mouse drag
+        
+        #Update the bbox anchor based on how far the mouse was dragged
+        self.bbox_anchor[0] -= self.bbox_dx
+        self.bbox_anchor[1] -= self.bbox_dy
+        #Reset the mouse drag distances
+        self.bbox_dx = 0
+        self.bbox_dy = 0
+        
+        #Prevent the anchor from being set past the left side of the image
+        if self.bbox_anchor[0] < 0:
+            self.bbox_anchor[0] = 0
+            
+        #Prevent the anchor from being set past the top of the image
+        if self.bbox_anchor[1] < 0:
+            self.bbox_anchor[1] = 0
+            
+        #Prevent the anchor from being set past the right side of the image
+        if self.bbox_anchor[0] + self.bbox_width > self.new_img_width:
+            self.bbox_anchor[0] = self.new_img_width - self.bbox_width
+            
+        #Prevent the anchor from being set past the bottom of the image
+        if self.bbox_anchor[1] + self.bbox_height > self.new_img_height:
+            self.bbox_anchor[1] = self.new_img_height - self.bbox_height
+            
+        #Update the crop box
+        self.update_crop_box()
+        
+        
+    def update_bbox_zoom(self):
+        #Store the distance between the left edge and top of the canvas before
+        #the zoom.  Needed to find the position of the mouse relative to the
+        #image prior to zoom.
+        prev_img_edge = [(self.img_window_width-self.bbox_width)/2,(self.img_window_height-self.bbox_height)/2]
+        #Store the previous width and height of the zoomed image in a list for iterating
+        prev_img_wh = [self.new_img_width,self.new_img_height]
+        #Update the width & height of the image & store in a list for iterating
+        self.new_img_width = int(self.img_width*self.ratio*self.mux[self.zoomcycle])
+        self.new_img_height = int(self.img_height*self.ratio*self.mux[self.zoomcycle])
+        cur_img_wh = [self.new_img_width,self.new_img_height]
+        
+        #Update the absolute zoom ratio (the starting zoom if image zoomed/shrunk
+        #to fit the canvas times the zoomcycle zoom)
+        self.abs_ratio = self.ratio*self.mux[self.zoomcycle]
+        
+        #Update the bounding box width and height (the width and height of the
+        #image display area in units of canvas pixels) and stor in a list for 
+        #iterating
+        self.bbox_width = min(self.new_img_width,self.img_window_width)
+        self.bbox_height = min(self.new_img_height,self.img_window_height)
+        cur_bbox_wh = [self.bbox_width,self.bbox_height]
+        
+        #Store the position of the mouse in a list for iterating
+        cur_mouse_xy = [self.mouse_x,self.mouse_y]
+        
+        #Iterate over width and height
+        for i in range(2):
+            #Determine the location of the mouse relative to the image before
+            #the zoom occurred
+            prev_mouse_pix = (cur_mouse_xy[i]-prev_img_edge[i]+self.bbox_anchor[i])
+            #Move the center of the bounding box to the mouse location
+            new_center = prev_mouse_pix*cur_img_wh[i]/prev_img_wh[i]
+            #Update the location of the bounding box anchor relative to the
+            #mouse location
+            self.bbox_anchor[i] = new_center-cur_bbox_wh[i]/2
+        
+        #Check that the bounding box does not extend past the edges of the zoomed
+        #image
+        if self.bbox_anchor[0] < 0:
+            self.bbox_anchor[0] = 0
+        if self.bbox_anchor[1] < 0:
+            self.bbox_anchor[1] = 0
+        if self.bbox_anchor[0] + self.bbox_width > self.new_img_width:
+            self.bbox_anchor[0] = self.new_img_width - self.bbox_width
+        if self.bbox_anchor[1] + self.bbox_height > self.new_img_height:
+            self.bbox_anchor[1] = self.new_img_height - self.bbox_height
+        
+        #Update the crop box
+        self.update_crop_box()
+    
+    def update_crop_box(self):
+            
+        #Update the location of the crop box anchor.  This converts the bbox_anchor
+        #from zoomed_image_coordinates to original_image_coordinates based
+        #on the original/zoomed width and height ratios
+        crop_bbox_anchor = [
+            self.bbox_anchor[0]*(self.img_width/self.new_img_width),
+            self.bbox_anchor[1]*self.img_height/self.new_img_height]
+        
+        #Calculate the height and width of the crop box
+        self.crop_height = self.bbox_height/self.abs_ratio
+        self.crop_width = self.bbox_width/self.abs_ratio
+        
+        #Set the crop box coordinates
+        self.crop_bbox[0:2] = crop_bbox_anchor
+        self.crop_bbox[2] = crop_bbox_anchor[0]+self.crop_width
+        self.crop_bbox[3] = crop_bbox_anchor[1]+self.crop_height
+        
+        #Convert the crop box coordinates to integers
+        self.crop_bbox = [int(round(item)) for item in self.crop_bbox]
+            
+        
+    def resize_img(self,frames):
+        
+        #If a bounding box does not exist
+        if not self.bbox:
+            #Calculate the zoom ratio required to fit the image to the canvas
+            self.ratio = min(self.img_window_width/self.img_width,self.img_window_height/self.img_height)
+            #If the zoom required to fit is more than 200%, set to 200%
+            if self.ratio>2:
+                self.ratio=2 
+                
+            #If the image should be fit to the canvas or if the image is larger
+            #than the canvas, calculate new image width/height values.  Otherwise
+            #use the actual image width/height
+            if self.fit_to_canvas or self.ratio < 1:
+                self.new_img_width = int(self.img_width*self.ratio*self.mux[self.zoomcycle])
+                self.new_img_height = int(self.img_height*self.ratio*self.mux[self.zoomcycle])
+            else:
+                self.new_img_width = self.img_width
+                self.new_img_height = self.img_height
+                self.ratio = 1
+            #Calculate the absolute zoom ratio and initialize the bounding box
+            self.abs_ratio = self.ratio*self.mux[self.zoomcycle]
+            self.init_bbox()
+        
+        for frame in frames:
+            #Make a copy of the frame
+            thumbnail = frame.copy()
+            
+            if self.rotation != 0:
+                #Rotate the image
+                thumbnail = thumbnail.rotate(self.rotation, expand=1, center=None, translate=None)
+                # thumbnail.save('rotate_{}.jpg'.format(self.rotation))
+            
+            if (self.crop_width<self.img_width) or (self.crop_height<self.img_height):
+                #Crop the image to the coordinates of the crop box
+                thumbnail = thumbnail.crop(self.crop_bbox)
+                
+            if self.brightcycle != 0:
+                enhancer = ImageEnhance.Brightness(thumbnail)
+                thumbnail = enhancer.enhance(self.brightness_mux[self.brightcycle])
+                
+            if self.contrastcycle != 0:
+                enhancer = ImageEnhance.Contrast(thumbnail)
+                thumbnail = enhancer.enhance(self.contrast_mux[self.contrastcycle])
+            
+            #Resize the cropped image to the bounding box width and height
+            thumbnail = thumbnail.resize((self.bbox_width,self.bbox_height),Image.LANCZOS)
+            # thumbnail.save('thumbnail.jpg')
+            #Return the rotated, cropped, resized image
+            yield thumbnail
+            
+            
+    def gen_sequence(self,img_file):
+        #Check if the file exists.  If it doesn't, flag the sequence as false
+        if os.path.isfile(img_file):
+            if self.new_image:
+                self.has_open_image=True
+                #Set the rotation to default of zero
+                self.rotation = 0
+                #Open the image file
+                self.open_image = Image.open(img_file)
+                #Find the width/height of the raw image file
+                (self.img_width, self.img_height) = self.open_image.size
+                
+                #Set the flag to indicate that an image is already loaded (to avoid
+                #unnecessary disk accesses)
+                self.new_image = False
+                #Indicate that a new bounding box is needed
+                self.bbox = False
+            #Extract the raw frames in the image
+            img_frames_raw = ImageSequence.Iterator(self.open_image)
+            
+            #Rotate/crop/resize the image as necessary
+            img_frames = self.resize_img(img_frames_raw)
+            
+            #Build the sequence of frames in the image and return the sequence
+            sequence = [ImageTk.PhotoImage(img) for img in img_frames]
+            self.img_missing = False
+        else:
+            sequence = False
+            self.img_missing = True
+        
+        return sequence
     
     def gen_compare_sequence(self,iterator,w,h):
         #Generates a sequence to compare two duplicate files
@@ -1629,16 +1980,49 @@ class App:
         #Build the inputs tuple and animate the compare window
         inputs = new_canvas,existing_canvas,both_canvas,new_image,existing_image
         self.animate_compare(0,0,inputs)
-                
+        
+        
+    
+    def init_first_image(self):
+        #Initialize the window for the first image of the session.  Required
+        #because loading the image with a call to the destroy function (even 
+        #located behind conditional statements) results in errors.  Not entirely
+        #sure why
+        
+        #Get the path to the current image
+        img_file = self.get_img_path()
+        
+        #If there's no image file, flag the sequence as "None".  Otherwise open
+        #the file and generate the sequence
+        if img_file == None: 
+            sequence = None   
+        else:
+            sequence = self.gen_sequence(img_file)
+        #Open an image window and load the image sequence
+        self.open_img_window(sequence)
+        
     def init_image(self):
+        
+        #Get the path to the current image
+        img_file = self.get_img_path()
+        
+        #If there's no image file, flag the sequence as "None".  Otherwise open
+        #the file and generate the sequence
+        if img_file == None: 
+            sequence = None   
+        else:
+            sequence = self.gen_sequence(img_file)
+        #Close the existing image window
         self.img_window.destroy()
         #Open an image window and load the image sequence
-        self.open_img_window(self.current_image.sequence)
+        self.open_img_window(sequence)
+            
+            
             
     def open_img_window(self,sequence):
         #Open a new window and lift it to the front
         self.img_window = tk.Toplevel(self.parent)
-        self.image_overlays = []
+        
         self.parent.focus_force()
         self.img_window.lift()
         
@@ -1661,7 +2045,7 @@ class App:
         self.canvas.pack()
                 
         #If there are no images, inform the user
-        if isinstance(sequence, type(None)):
+        if sequence == None:
             error_text = 'No images in the \ncurrently loaded list of images\n\nPress F1 to re-check \nthe source directory'
             text_item = self.canvas.create_text(
                 int(self.img_window_width/2),
@@ -1693,7 +2077,9 @@ class App:
             parts = os.path.split(self.img_list[self.cur_img])
             self.animate(0,sequence,inputs)
             
+        
     def animate(self, counter,sequence,inputs):
+    
         if self.open_text_window:
             self.txt_window.lift()
             self.txt_window.focus_force()
@@ -1722,7 +2108,7 @@ class App:
             #The number of items in the image list
             num_items = len(self.img_list)
             #Convert the absolute zoom percentage to a string
-            zoom_perc = '{}%'.format(int(self.current_image.abs_ratio*100))
+            zoom_perc = '{}%'.format(int(self.abs_ratio*100))
             #If displaying in random order, display a flag and set the height of
             #the text
             if self.rand_order:
@@ -1749,8 +2135,8 @@ class App:
                 km_txt = ''
                 
             #brightness/contrast MUX cycle
-            if (self.current_image.brightcycle != 0) | (self.current_image.contrastcycle != 0):
-                brco_txt = "\nBr/Co: {}/{}".format(self.current_image.brightcycle,self.current_image.contrastcycle)
+            if (self.brightcycle != 0) | (self.contrastcycle != 0):
+                brco_txt = "\nBr/Co: {}/{}".format(self.brightcycle,self.contrastcycle)
             else:
                 brco_txt = ''
                 
@@ -1761,7 +2147,7 @@ class App:
                 self.fn)
             
             counter_text2 = 'Zoom:{}({})\nOverall Pos: {}\{} \nFolder Pos: {}\{}{}{}{}{}{}'.format(
-                self.current_image.zoomcycle,
+                self.zoomcycle,
                 zoom_perc,
                 item,
                 num_items,
@@ -1814,7 +2200,11 @@ class App:
         #After the GIF animation delay, call the compare window animation function
         #again
         self.img_compare_window.after(self.delay, lambda: self.animate_compare(new_counter,existing_counter,inputs))
+            
       
+#sample call: 
+    # python main.py -huc8 Winooski_River -huc12_list WIN_0502 -n 2 -reach_type SGA
+
 def main():
     """Highest-level function. Called by user.
     
@@ -1871,6 +2261,8 @@ def main():
         #Initialize the application object and start the run
         app = App(root,source_dir,dest_root)
         root.mainloop()
+
+
 
 if __name__ == '__main__':
     main()
