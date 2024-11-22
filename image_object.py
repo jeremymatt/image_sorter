@@ -57,7 +57,6 @@ class IMAGE:
             print('Max/Min zoom reached!')
             updated = False
 
-        print('Zoom updated: {}'.format(updated))
         self.update_bbox_zoom(x,y)
         self.gen_sequence()
         return updated

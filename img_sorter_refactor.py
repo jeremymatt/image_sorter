@@ -76,6 +76,8 @@ class App:
         #Record width & height of the screen
         self.screen_width = self.parent.winfo_screenwidth()
         self.screen_height = self.parent.winfo_screenheight()
+
+        self.open_image_window = False
         
         # if source_dir == "None":
         #     #Use the default source directory from the settings file
@@ -129,6 +131,7 @@ class App:
         self.default_window_height= 500
         #flag to indicate that there is no open image window
         self.img_window = None
+        self.canvas = None
         self.has_open_image=False
         #flag to indicate that a compare window is open
         self.has_compare_window = False
@@ -1452,8 +1455,6 @@ class App:
         #If there is a duplicate compare window open, close it and reset the 
         #compare flags
         self.close_img_compare_window()
-        #Reset zoom
-        self.reset_zoomcycle()
         #If there are images in the image history list
         if len(self.previous_images)>0:
             #Pop the previous image from the history list
@@ -1631,16 +1632,22 @@ class App:
         self.animate_compare(0,0,inputs)
                 
     def init_image(self):
-        self.img_window.destroy()
+        # self.img_window.destroy()
+        # self.open_image_window = False
         #Open an image window and load the image sequence
         self.open_img_window(self.current_image.sequence)
             
     def open_img_window(self,sequence):
         #Open a new window and lift it to the front
+        window_bkup = self.img_window
+        canvas_bkup = self.canvas
         self.img_window = tk.Toplevel(self.parent)
-        self.image_overlays = []
+        self.img_window.lower()
         self.parent.focus_force()
-        self.img_window.lift()
+        try:
+            window_bkup.lift()
+        except:
+            donothing=True
         
         #If there is a compare window, lift that to the top
         if self.has_compare_window:
@@ -1659,9 +1666,16 @@ class App:
         self.img_window.configure(background='black')
         self.canvas = tk.Canvas(self.img_window,height=self.img_window_height,width=self.img_window_width, bg='black', highlightthickness=0)
         self.canvas.pack()
+
                 
         #If there are no images, inform the user
         if isinstance(sequence, type(None)):
+            self.img_window.lift()
+            self.parent.focus_force()
+            try:
+                window_bkup.destroy()
+            except:
+                donothing=True
             error_text = 'No images in the \ncurrently loaded list of images\n\nPress F1 to re-check \nthe source directory'
             text_item = self.canvas.create_text(
                 int(self.img_window_width/2),
@@ -1675,6 +1689,12 @@ class App:
             self.canvas.tag_raise(text_item)
         #If the current file doesn't exist, inform the user
         elif sequence == False:
+            self.img_window.lift()
+            self.parent.focus_force()
+            try:
+                window_bkup.destroy()
+            except:
+                donothing=True
             error_text = 'Image does not exist\n   {}\n\n   Press F1 to re-check the source directory\n   Press F7 remove missing until non-missing img is found\n   Press F8 to check image list for missing files\n   Press any move key to remove image from list'.format(self.img_list[self.cur_img])
             text_item = self.canvas.create_text(
                 int(self.img_window_width/2),
@@ -1690,7 +1710,16 @@ class App:
             #Create an image on the canvas and load first frame in the image sequence
             self.image = self.canvas.create_image(int(self.img_window_width/2),int(self.img_window_height/2), image=sequence[0],tag='img')
             inputs = (self.canvas,self.img_window,self.image)
-            parts = os.path.split(self.img_list[self.cur_img])
+            self.canvas.tag_raise(self.image)
+
+        
+            self.parent.focus_force()
+            self.img_window.lift()
+            try:
+                window_bkup.destroy()
+            except:
+                donothing=True
+
             self.animate(0,sequence,inputs)
             
     def animate(self, counter,sequence,inputs):
